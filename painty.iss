@@ -4,11 +4,11 @@
 [Setup]
 AppName=Painty
 AppVersion=0.1.0
-AppPublisher=Gaël
+AppPublisher=Gtisseran
 DefaultDirName={autopf}\Painty
 DefaultGroupName=Painty
 OutputDir=dist
-OutputBaseFilename=PaintySetup
+OutputBaseFilename=PaintySetup-{#AppVersion}
 SetupIconFile=assets\painty.ico
 UninstallDisplayIcon={app}\painty.exe
 Compression=lzma2
