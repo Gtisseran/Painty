@@ -1,8 +1,8 @@
-use eframe::egui::{self, vec2, Align2, Context, Frame, Id, Label, Margin, RichText, Rounding, Stroke, Ui};
+use eframe::egui::{self, vec2, Align2, Context, Frame, Id, Margin, Rounding, Stroke};
 
 use crate::model::{Brush, Tool};
 use crate::theme::{self, Colors};
-use crate::widgets::{self, Kind};
+use crate::widgets::{self, Icon, Kind};
 
 /// Actions the toolbar can request from the app.
 pub enum Action {
@@ -11,33 +11,36 @@ pub enum Action {
     Settings,
 }
 
-/// Toolbar layout, chosen from the window width.
-enum Layout {
-    /// Full toolbar, one row, with color swatches and pixel size.
-    Wide,
-    /// One row, without swatches.
-    Medium,
-    /// Two rows, for narrow windows.
-    Narrow,
-}
-
-impl Layout {
-    fn for_width(w: f32) -> Self {
-        if w >= 960.0 {
-            Layout::Wide
-        } else if w >= 640.0 {
-            Layout::Medium
-        } else {
-            Layout::Narrow
-        }
-    }
+/// Smooth start and end for animations (0.0 -> 1.0).
+fn ease(t: f32) -> f32 {
+    t * t * (3.0 - 2.0 * t)
 }
 
 /// Draws the floating toolbar at the bottom of the window.
 /// Returns the action clicked this frame, if any.
+///
+/// The toolbar stays on one row. Elements fold in and out smoothly as the
+/// window width crosses a threshold:
+/// - >= 1000 px: color swatches and the size in pixels
+/// - >= 640 px:  separators and text buttons (below: icon buttons)
 pub fn show(ctx: &Context, brush: &mut Brush, c: &Colors) -> Option<Action> {
-    let layout = Layout::for_width(ctx.screen_rect().width());
+    let w = ctx.screen_rect().width();
     let mut action = None;
+
+    // Each value animates from 0.0 to 1.0 when its condition becomes true.
+    let anim = |name: &str, on: bool| {
+        ease(ctx.animate_bool_with_time(Id::new(("tb_vis", name)), on, 0.22))
+    };
+    let wide = anim("wide", w >= 1000.0);
+    let full = anim("full", w >= 640.0);
+    let compact = anim("compact", w < 640.0);
+
+    // The slider follows the window width continuously.
+    let slider_w = ctx.animate_value_with_time(
+        Id::new("tb_slider_w"),
+        (w * 0.18).clamp(70.0, 200.0),
+        0.12,
+    );
 
     egui::Area::new(Id::new("toolbar"))
         .anchor(Align2::CENTER_BOTTOM, vec2(0.0, -20.0))
@@ -52,100 +55,71 @@ pub fn show(ctx: &Context, brush: &mut Brush, c: &Colors) -> Option<Action> {
                 .show(ui, |ui| {
                     ui.spacing_mut().item_spacing = vec2(8.0, 6.0);
                     ui.spacing_mut().interact_size = vec2(28.0, 28.0);
+                    ui.spacing_mut().slider_width = slider_w;
 
-                    match layout {
-                        Layout::Wide => {
-                            ui.horizontal(|ui| {
-                                colors_group(ui, brush, c, true);
-                                widgets::divider(ui, c);
-                                size_group(ui, brush, c, 180.0, true);
-                                widgets::divider(ui, c);
-                                tool_group(ui, brush, c);
-                                widgets::divider(ui, c);
-                                action_group(ui, c, &mut action);
-                            });
+                    ui.horizontal(|ui| {
+                        // Colors
+                        for (i, color) in theme::palette(c.ink).iter().enumerate() {
+                            let selected = brush.tool == Tool::Brush && brush.color == *color;
+                            if widgets::swatch(ui, i, *color, selected, c, wide).clicked() {
+                                brush.color = *color;
+                                brush.tool = Tool::Brush;
+                            }
                         }
-                        Layout::Medium => {
-                            ui.horizontal(|ui| {
-                                colors_group(ui, brush, c, false);
-                                widgets::divider(ui, c);
-                                size_group(ui, brush, c, 120.0, false);
-                                widgets::divider(ui, c);
-                                tool_group(ui, brush, c);
-                                widgets::divider(ui, c);
-                                action_group(ui, c, &mut action);
-                            });
+                        ui.color_edit_button_srgba(&mut brush.color);
+
+                        widgets::divider(ui, c, full);
+
+                        // Size
+                        ui.add(
+                            egui::Slider::new(&mut brush.width, 1.0..=80.0)
+                                .show_value(false)
+                                .trailing_fill(true),
+                        );
+                        widgets::px_label(ui, c, &format!("{:.0} px", brush.width), wide);
+
+                        widgets::divider(ui, c, full);
+
+                        // Tool
+                        widgets::segmented(
+                            ui,
+                            "tool",
+                            c,
+                            &mut brush.tool,
+                            &[(Tool::Brush, "Brush"), (Tool::Eraser, "Eraser")],
+                            68.0,
+                        );
+
+                        widgets::divider(ui, c, full);
+
+                        // Actions: text buttons on wide windows, icons on narrow ones.
+                        if widgets::button_anim(ui, "undo", c, "Undo", Kind::Ghost, 0.0, full)
+                            .clicked()
+                        {
+                            action = Some(Action::Undo);
                         }
-                        Layout::Narrow => {
-                            ui.vertical(|ui| {
-                                ui.horizontal(|ui| {
-                                    colors_group(ui, brush, c, true);
-                                    size_group(ui, brush, c, 150.0, false);
-                                });
-                                ui.horizontal(|ui| {
-                                    tool_group(ui, brush, c);
-                                    action_group(ui, c, &mut action);
-                                });
-                            });
+                        if widgets::button_anim(ui, "clear", c, "Clear", Kind::Ghost, 0.0, full)
+                            .clicked()
+                        {
+                            action = Some(Action::Clear);
                         }
-                    }
+                        if widgets::icon_button(ui, "undo", c, Icon::Undo, "Undo", compact)
+                            .clicked()
+                        {
+                            action = Some(Action::Undo);
+                        }
+                        if widgets::icon_button(ui, "clear", c, Icon::Trash, "Clear", compact)
+                            .clicked()
+                        {
+                            action = Some(Action::Clear);
+                        }
+
+                        if widgets::settings_button(ui, c).clicked() {
+                            action = Some(Action::Settings);
+                        }
+                    });
                 });
         });
 
     action
-}
-
-/// Color swatches (optional) and the custom color picker.
-fn colors_group(ui: &mut Ui, brush: &mut Brush, c: &Colors, swatches: bool) {
-    if swatches {
-        for (i, color) in theme::palette(c.ink).iter().enumerate() {
-            let selected = brush.tool == Tool::Brush && brush.color == *color;
-            if widgets::swatch(ui, i, *color, selected, c).clicked() {
-                brush.color = *color;
-                brush.tool = Tool::Brush;
-            }
-        }
-    }
-    ui.color_edit_button_srgba(&mut brush.color);
-}
-
-/// Brush size slider, with the pixel value shown when there is room.
-fn size_group(ui: &mut Ui, brush: &mut Brush, c: &Colors, slider_w: f32, show_px: bool) {
-    ui.spacing_mut().slider_width = slider_w;
-    ui.add(
-        egui::Slider::new(&mut brush.width, 1.0..=80.0)
-            .show_value(false)
-            .trailing_fill(true),
-    );
-    if show_px {
-        ui.add_sized(
-            [44.0, 20.0],
-            Label::new(RichText::new(format!("{:.0} px", brush.width)).color(c.text_dim)),
-        );
-    }
-}
-
-/// Brush / eraser switch.
-fn tool_group(ui: &mut Ui, brush: &mut Brush, c: &Colors) {
-    widgets::segmented(
-        ui,
-        "tool",
-        c,
-        &mut brush.tool,
-        &[(Tool::Brush, "Brush"), (Tool::Eraser, "Eraser")],
-        68.0,
-    );
-}
-
-/// Undo, clear and settings buttons.
-fn action_group(ui: &mut Ui, c: &Colors, action: &mut Option<Action>) {
-    if widgets::button(ui, "undo", c, "Undo", Kind::Ghost, 0.0).clicked() {
-        *action = Some(Action::Undo);
-    }
-    if widgets::button(ui, "clear", c, "Clear", Kind::Ghost, 0.0).clicked() {
-        *action = Some(Action::Clear);
-    }
-    if widgets::settings_button(ui, c).clicked() {
-        *action = Some(Action::Settings);
-    }
 }

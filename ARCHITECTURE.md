@@ -25,7 +25,7 @@
 | `app.rs` | Main application state (`Painty`). Ties all parts together each frame. |
 | `canvas.rs` | Drawing area. Handles mouse input and paints strokes. |
 | `model.rs` | Data types: `Tool`, `Line` (one stroke), `Brush` (current settings). |
-| `toolbar.rs` | Bottom floating toolbar. Chooses one of three layouts based on window width. |
+| `toolbar.rs` | Bottom floating toolbar. Elements fold in and out with animations depending on window width. |
 | `widgets.rs` | Custom controls: buttons, color swatches, segmented control, settings icon. |
 | `dialog.rs` | Modal popup with dimmed background, slide-in animation and scrolling. |
 | `settings.rs` | Settings dialog (theme, canvas background, About). |

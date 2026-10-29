@@ -11,7 +11,7 @@ A minimal paint application written in Rust with [egui](https://github.com/emilk
 - Light and dark theme
 - Canvas background that either stays white or follows the theme
 - Settings saved between sessions
-- Responsive toolbar with three layouts
+- Responsive toolbar that adapts smoothly to the window width
 
 ## Requirements
 

@@ -1,6 +1,6 @@
 use eframe::egui::{
-    self, pos2, vec2, Align2, Color32, CursorIcon, FontId, Id, Image, Rect, Response, Rounding,
-    Sense, Stroke, Ui,
+    self, pos2, vec2, Align2, Color32, CursorIcon, FontId, Id, Image, Painter, Pos2, Rect,
+    Response, Rounding, Sense, Shape, Stroke, Ui, Vec2,
 };
 
 use crate::theme::Colors;
@@ -16,6 +16,13 @@ pub enum Kind {
     Danger,
 }
 
+/// Icons drawn directly with the painter.
+#[derive(Clone, Copy)]
+pub enum Icon {
+    Undo,
+    Trash,
+}
+
 /// Shows a hand cursor over interactive elements.
 fn pointer_cursor(ui: &Ui, resp: &Response) {
     if resp.hovered() {
@@ -23,8 +30,32 @@ fn pointer_cursor(ui: &Ui, resp: &Response) {
     }
 }
 
-/// Text button with a fade on hover.
+/// Allocates space for an element that can be folded away.
+/// `vis` goes from 0.0 (hidden) to 1.0 (fully shown). The gap after the element
+/// is scaled too, so a hidden element takes no room at all.
+fn alloc(ui: &mut Ui, size: Vec2, sense: Sense, vis: f32) -> (Rect, Response) {
+    let gap = ui.spacing().item_spacing.x;
+    ui.spacing_mut().item_spacing.x = gap * vis;
+    let out = ui.allocate_exact_size(size, sense);
+    ui.spacing_mut().item_spacing.x = gap;
+    out
+}
+
+/// Text button with a fade on hover. Always fully visible.
 pub fn button(ui: &mut Ui, id: &str, c: &Colors, label: &str, kind: Kind, min_w: f32) -> Response {
+    button_anim(ui, id, c, label, kind, min_w, 1.0)
+}
+
+/// Text button whose width and opacity follow `vis` (0.0 hidden, 1.0 shown).
+pub fn button_anim(
+    ui: &mut Ui,
+    id: &str,
+    c: &Colors,
+    label: &str,
+    kind: Kind,
+    min_w: f32,
+    vis: f32,
+) -> Response {
     let (base, hover, fg) = match kind {
         Kind::Ghost => (Color32::TRANSPARENT, c.hover, c.text),
         Kind::Soft => (c.segment_bg, c.hover, c.text),
@@ -37,8 +68,14 @@ pub fn button(ui: &mut Ui, id: &str, c: &Colors, label: &str, kind: Kind, min_w:
         .layout_no_wrap(label.to_owned(), font.clone(), fg)
         .size()
         .x;
-    let size = vec2((text_w + 24.0).max(min_w), 32.0);
-    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+    let full = vec2((text_w + 24.0).max(min_w), 32.0);
+
+    // Not clickable while it is appearing or disappearing.
+    let sense = if vis > 0.95 { Sense::click() } else { Sense::hover() };
+    let (rect, resp) = alloc(ui, vec2(full.x * vis, full.y), sense, vis);
+    if vis <= 0.01 {
+        return resp;
+    }
 
     let t = ui
         .ctx()
@@ -53,47 +90,162 @@ pub fn button(ui: &mut Ui, id: &str, c: &Colors, label: &str, kind: Kind, min_w:
         fill = hover;
     }
 
-    let painter = ui.painter();
-    painter.rect_filled(rect, Rounding::same(9.0), fill);
-    painter.text(rect.center(), Align2::CENTER_CENTER, label, font, fg);
+    let painter = ui.painter().with_clip_rect(rect);
+    painter.rect_filled(rect, Rounding::same(9.0), fill.gamma_multiply(vis));
+    painter.text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        label,
+        font,
+        fg.gamma_multiply(vis),
+    );
 
-    pointer_cursor(ui, &resp);
+    if vis > 0.95 {
+        pointer_cursor(ui, &resp);
+    }
     resp
 }
 
-/// Color swatch with an animated selection ring.
-pub fn swatch(ui: &mut Ui, idx: usize, color: Color32, selected: bool, c: &Colors) -> Response {
-    let (rect, resp) = ui.allocate_exact_size(vec2(28.0, 28.0), Sense::click());
+/// Square button with a drawn icon and a tooltip. Width and opacity follow `vis`.
+pub fn icon_button(ui: &mut Ui, id: &str, c: &Colors, icon: Icon, tip: &str, vis: f32) -> Response {
+    let sense = if vis > 0.95 { Sense::click() } else { Sense::hover() };
+    let (rect, resp) = alloc(ui, vec2(32.0 * vis, 32.0), sense, vis);
+    if vis <= 0.01 {
+        return resp;
+    }
+
+    let t = ui
+        .ctx()
+        .animate_bool_with_time(Id::new(("icon_btn", id)), resp.hovered(), 0.12);
+    let painter = ui.painter().with_clip_rect(rect);
+    painter.rect_filled(rect, Rounding::same(9.0), c.hover.gamma_multiply(t * vis));
+
+    let stroke = Stroke::new(1.8_f32, c.text.gamma_multiply(vis));
+    // Icons are designed on a 24x24 grid, scaled down to about 17 px.
+    let k = 0.7;
+    let origin = rect.center() - vec2(12.0 * k, 12.0 * k);
+
+    match icon {
+        Icon::Undo => {
+            // Arrow body: down, rounded corner, then left.
+            let mut body = vec![(20.0, 20.0), (20.0, 13.0)];
+            for i in 0..=6 {
+                let a = -std::f32::consts::FRAC_PI_2 * i as f32 / 6.0;
+                body.push((16.0 + 4.0 * a.cos(), 13.0 + 4.0 * a.sin()));
+            }
+            body.push((4.0, 9.0));
+            poly(&painter, origin, k, &body, stroke);
+            poly(&painter, origin, k, &[(9.0, 14.0), (4.0, 9.0), (9.0, 4.0)], stroke);
+        }
+        Icon::Trash => {
+            poly(&painter, origin, k, &[(3.0, 6.0), (21.0, 6.0)], stroke);
+            poly(
+                &painter,
+                origin,
+                k,
+                &[(8.0, 6.0), (8.0, 4.0), (9.0, 3.0), (15.0, 3.0), (16.0, 4.0), (16.0, 6.0)],
+                stroke,
+            );
+            poly(
+                &painter,
+                origin,
+                k,
+                &[(5.0, 6.0), (5.0, 20.0), (7.0, 22.0), (17.0, 22.0), (19.0, 20.0), (19.0, 6.0)],
+                stroke,
+            );
+            poly(&painter, origin, k, &[(10.0, 11.0), (10.0, 17.0)], stroke);
+            poly(&painter, origin, k, &[(14.0, 11.0), (14.0, 17.0)], stroke);
+        }
+    }
+
+    if vis > 0.95 {
+        pointer_cursor(ui, &resp);
+        return resp.on_hover_text(tip);
+    }
+    resp
+}
+
+/// Draws a polyline from points on the icon grid, with round ends.
+fn poly(painter: &Painter, origin: Pos2, k: f32, pts: &[(f32, f32)], stroke: Stroke) {
+    let p: Vec<Pos2> = pts
+        .iter()
+        .map(|&(x, y)| origin + vec2(x * k, y * k))
+        .collect();
+    if let (Some(first), Some(last)) = (p.first().copied(), p.last().copied()) {
+        let r = stroke.width / 2.0;
+        painter.circle_filled(first, r, stroke.color);
+        painter.circle_filled(last, r, stroke.color);
+    }
+    painter.add(Shape::line(p, stroke));
+}
+
+/// Color swatch with an animated selection ring. Size and opacity follow `vis`.
+pub fn swatch(
+    ui: &mut Ui,
+    idx: usize,
+    color: Color32,
+    selected: bool,
+    c: &Colors,
+    vis: f32,
+) -> Response {
+    let sense = if vis > 0.95 { Sense::click() } else { Sense::hover() };
+    let (rect, resp) = alloc(ui, vec2(28.0 * vis, 28.0), sense, vis);
+    if vis <= 0.01 {
+        return resp;
+    }
 
     let sel = ui
         .ctx()
         .animate_bool_with_time(Id::new(("swatch_sel", idx)), selected, 0.15);
-    let hov = ui
-        .ctx()
-        .animate_bool_with_time(Id::new(("swatch_hov", idx)), resp.hovered(), 0.12);
+    let hov = ui.ctx().animate_bool_with_time(
+        Id::new(("swatch_hov", idx)),
+        resp.hovered() && vis > 0.95,
+        0.12,
+    );
 
-    let painter = ui.painter();
+    let painter = ui.painter().with_clip_rect(rect.expand(2.0));
     let center = rect.center();
     // The swatch grows slightly on hover.
-    let r = 10.0 + hov * 1.5;
-    painter.circle_filled(center, r, color);
-    painter.circle_stroke(center, r, Stroke::new(1.0_f32, c.bar_border));
+    let r = (10.0 + hov * 1.5) * vis;
+    painter.circle_filled(center, r, color.gamma_multiply(vis));
+    painter.circle_stroke(
+        center,
+        r,
+        Stroke::new(1.0_f32, c.bar_border.gamma_multiply(vis)),
+    );
     if sel > 0.0 {
         painter.circle_stroke(
             center,
-            11.0 + sel * 2.0,
-            Stroke::new(2.0_f32, c.accent.gamma_multiply(sel)),
+            (11.0 + sel * 2.0) * vis,
+            Stroke::new(2.0_f32, c.accent.gamma_multiply(sel * vis)),
         );
     }
 
-    pointer_cursor(ui, &resp);
+    if vis > 0.95 {
+        pointer_cursor(ui, &resp);
+    }
     resp
 }
 
-/// Thin vertical separator between toolbar groups.
-pub fn divider(ui: &mut Ui, c: &Colors) {
-    let (rect, _) = ui.allocate_exact_size(vec2(1.0, 20.0), Sense::hover());
-    ui.painter().rect_filled(rect, 0.0, c.bar_border);
+/// Brush size in pixels. Width and opacity follow `vis`.
+pub fn px_label(ui: &mut Ui, c: &Colors, text: &str, vis: f32) {
+    let (rect, _) = alloc(ui, vec2(44.0 * vis, 20.0), Sense::hover(), vis);
+    if vis > 0.01 {
+        ui.painter().with_clip_rect(rect).text(
+            pos2(rect.min.x + 22.0, rect.center().y),
+            Align2::CENTER_CENTER,
+            text,
+            FontId::proportional(15.0),
+            c.text_dim.gamma_multiply(vis),
+        );
+    }
+}
+
+/// Thin vertical separator between toolbar groups. Fades in and out with `vis`.
+pub fn divider(ui: &mut Ui, c: &Colors, vis: f32) {
+    let (rect, _) = alloc(ui, vec2(1.0 * vis, 20.0), Sense::hover(), vis);
+    ui.painter()
+        .rect_filled(rect, 0.0, c.bar_border.gamma_multiply(vis));
 }
 
 /// Segmented control with a pill that slides to the selected option.
