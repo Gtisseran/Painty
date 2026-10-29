@@ -98,15 +98,15 @@ impl eframe::App for Painty {
         let mut confirm = false;
         let mut cancel = false;
         let dismissed = dialog::show(ctx, "confirm_clear", self.confirm_clear, &c, |ui| {
-            ui.label(RichText::new("Tout effacer ?").size(18.0).strong());
+            ui.label(RichText::new("Clear everything?").size(18.0).strong());
             ui.add_space(6.0);
-            ui.label(RichText::new("Le dessin sera supprimé définitivement.").color(c.text_dim));
+            ui.label(RichText::new("This drawing will be permanently deleted.").color(c.text_dim));
             ui.add_space(16.0);
             ui.horizontal(|ui| {
-                if widgets::button(ui, "keep", &c, "Garder", Kind::Soft, 146.0).clicked() {
+                if widgets::button(ui, "keep", &c, "Keep", Kind::Soft, 146.0).clicked() {
                     cancel = true;
                 }
-                if widgets::button(ui, "wipe", &c, "Tout effacer", Kind::Danger, 146.0).clicked() {
+                if widgets::button(ui, "wipe", &c, "Clear all", Kind::Danger, 146.0).clicked() {
                     confirm = true;
                 }
             });

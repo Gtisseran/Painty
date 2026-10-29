@@ -15,41 +15,41 @@ pub fn show(
     let mut close = false;
 
     let dismissed = dialog::show(ctx, "settings", *open, c, |ui| {
-        ui.label(RichText::new("Paramètres").size(18.0).strong());
+        ui.label(RichText::new("Settings").size(18.0).strong());
         ui.add_space(16.0);
 
-        ui.label(RichText::new("Apparence").color(c.text_dim));
+        ui.label(RichText::new("Appearance").color(c.text_dim));
         ui.add_space(6.0);
         widgets::segmented(
             ui,
             "theme",
             c,
             mode,
-            &[(Mode::Light, "Clair"), (Mode::Dark, "Sombre")],
+            &[(Mode::Light, "Light"), (Mode::Dark, "Dark")],
             147.0,
         );
         ui.add_space(12.0);
 
-        ui.label(RichText::new("Zone de dessin").color(c.text_dim));
+        ui.label(RichText::new("Canvas").color(c.text_dim));
         ui.add_space(6.0);
         widgets::segmented(
             ui,
             "canvas_follow",
             c,
             canvas_follows_theme,
-            &[(false, "Blanche"), (true, "Suit le thème")],
+            &[(false, "White"), (true, "Follow theme")],
             147.0,
         );
         ui.add_space(16.0);
 
-        ui.label(RichText::new("À propos").color(c.text_dim));
+        ui.label(RichText::new("About").color(c.text_dim));
         ui.add_space(4.0);
         ui.label(RichText::new("Painty").strong());
         ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
-        ui.label("Paint minimaliste en Rust, fait avec egui.");
+        ui.label("Minimal paint app written in Rust with egui.");
         ui.add_space(16.0);
 
-        if widgets::button(ui, "settings_close", c, "Fermer", Kind::Soft, 300.0).clicked() {
+        if widgets::button(ui, "settings_close", c, "Close", Kind::Soft, 300.0).clicked() {
             close = true;
         }
     });

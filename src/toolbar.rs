@@ -132,17 +132,17 @@ fn tool_group(ui: &mut Ui, brush: &mut Brush, c: &Colors) {
         "tool",
         c,
         &mut brush.tool,
-        &[(Tool::Brush, "Pinceau"), (Tool::Eraser, "Gomme")],
+        &[(Tool::Brush, "Brush"), (Tool::Eraser, "Eraser")],
         68.0,
     );
 }
 
 /// Undo, clear and settings buttons.
 fn action_group(ui: &mut Ui, c: &Colors, action: &mut Option<Action>) {
-    if widgets::button(ui, "undo", c, "Annuler", Kind::Ghost, 0.0).clicked() {
+    if widgets::button(ui, "undo", c, "Undo", Kind::Ghost, 0.0).clicked() {
         *action = Some(Action::Undo);
     }
-    if widgets::button(ui, "clear", c, "Effacer", Kind::Ghost, 0.0).clicked() {
+    if widgets::button(ui, "clear", c, "Clear", Kind::Ghost, 0.0).clicked() {
         *action = Some(Action::Clear);
     }
     if widgets::settings_button(ui, c).clicked() {
