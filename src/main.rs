@@ -1,3 +1,5 @@
+//! Application entry point: window options, app icon, image loaders and fonts.
+
 mod app;
 mod canvas;
 mod config;
@@ -11,8 +13,9 @@ mod widgets;
 use eframe::egui;
 
 fn main() -> eframe::Result {
+    // Window icon, embedded in the binary at compile time.
     let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png"))
-        .expect("icône invalide");
+        .expect("invalid icon");
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -27,6 +30,7 @@ fn main() -> eframe::Result {
         "Painty",
         options,
         Box::new(|cc| {
+            // Needed for the SVG icons loaded with include_image!.
             egui_extras::install_image_loaders(&cc.egui_ctx);
             theme::setup(&cc.egui_ctx);
             Ok(Box::new(app::Painty::new()))

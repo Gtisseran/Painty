@@ -2,6 +2,7 @@ use eframe::egui::{Color32, Painter, Sense, Shape, Stroke, Ui};
 
 use crate::model::{Brush, Line, Tool};
 
+/// Holds the finished strokes and the stroke currently being drawn.
 #[derive(Default)]
 pub struct Canvas {
     lines: Vec<Line>,
@@ -9,10 +10,12 @@ pub struct Canvas {
 }
 
 impl Canvas {
+    /// Removes the last finished stroke.
     pub fn undo(&mut self) {
         self.lines.pop();
     }
 
+    /// Removes every stroke.
     pub fn clear(&mut self) {
         self.lines.clear();
         self.current = None;
@@ -22,6 +25,7 @@ impl Canvas {
         self.lines.is_empty()
     }
 
+    /// Handles mouse input on the drawing area and paints all strokes.
     pub fn show(&mut self, ui: &mut Ui, brush: &Brush, bg: Color32) {
         let (response, painter) =
             ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
@@ -48,7 +52,7 @@ impl Canvas {
             }
         }
 
-        // Clic simple sans glisser : on pose un point
+        // Single click without dragging: place one point.
         if response.clicked() {
             if let Some(pos) = response.interact_pointer_pos() {
                 let mut line = Line::new(brush.color, brush.width, erase);
@@ -58,6 +62,7 @@ impl Canvas {
             }
         }
 
+        // Skip strokes that are outside the visible area.
         let clip = painter.clip_rect();
         for line in &self.lines {
             if line.bounds.intersects(clip) {
@@ -70,6 +75,7 @@ impl Canvas {
     }
 }
 
+/// Draws one stroke. Eraser strokes are painted with the background color.
 fn draw_line(painter: &Painter, line: &Line, bg: Color32) {
     let color = if line.erase { bg } else { line.color };
     let radius = line.width / 2.0;
@@ -81,14 +87,14 @@ fn draw_line(painter: &Painter, line: &Line, bg: Color32) {
             painter.circle_filled(pts[0], radius, color);
         }
         n => {
-            // Un seul tracé pour tout le trait
+            // Draw the whole stroke as one polyline.
             painter.add(Shape::line(pts.clone(), Stroke::new(line.width, color)));
 
-            // Bouts arrondis
+            // Round caps at both ends.
             painter.circle_filled(pts[0], radius, color);
             painter.circle_filled(pts[n - 1], radius, color);
 
-            // Jointures arrondies uniquement aux virages serrés
+            // Round joins only at sharp corners (dot product of the two segments below 0.8).
             for w in pts.windows(3) {
                 let a = w[1] - w[0];
                 let b = w[2] - w[1];

@@ -4,6 +4,7 @@ use crate::dialog;
 use crate::theme::{Colors, Mode};
 use crate::widgets::{self, Kind};
 
+/// Settings dialog: theme, canvas background and About section.
 pub fn show(
     ctx: &Context,
     open: &mut bool,

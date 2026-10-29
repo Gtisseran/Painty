@@ -4,15 +4,20 @@ use crate::model::{Brush, Tool};
 use crate::theme::{self, Colors};
 use crate::widgets::{self, Kind};
 
+/// Actions the toolbar can request from the app.
 pub enum Action {
     Undo,
     Clear,
     Settings,
 }
 
+/// Toolbar layout, chosen from the window width.
 enum Layout {
+    /// Full toolbar, one row, with color swatches and pixel size.
     Wide,
+    /// One row, without swatches.
     Medium,
+    /// Two rows, for narrow windows.
     Narrow,
 }
 
@@ -28,6 +33,8 @@ impl Layout {
     }
 }
 
+/// Draws the floating toolbar at the bottom of the window.
+/// Returns the action clicked this frame, if any.
 pub fn show(ctx: &Context, brush: &mut Brush, c: &Colors) -> Option<Action> {
     let layout = Layout::for_width(ctx.screen_rect().width());
     let mut action = None;
@@ -88,6 +95,7 @@ pub fn show(ctx: &Context, brush: &mut Brush, c: &Colors) -> Option<Action> {
     action
 }
 
+/// Color swatches (optional) and the custom color picker.
 fn colors_group(ui: &mut Ui, brush: &mut Brush, c: &Colors, swatches: bool) {
     if swatches {
         for (i, color) in theme::palette(c.ink).iter().enumerate() {
@@ -101,6 +109,7 @@ fn colors_group(ui: &mut Ui, brush: &mut Brush, c: &Colors, swatches: bool) {
     ui.color_edit_button_srgba(&mut brush.color);
 }
 
+/// Brush size slider, with the pixel value shown when there is room.
 fn size_group(ui: &mut Ui, brush: &mut Brush, c: &Colors, slider_w: f32, show_px: bool) {
     ui.spacing_mut().slider_width = slider_w;
     ui.add(
@@ -116,6 +125,7 @@ fn size_group(ui: &mut Ui, brush: &mut Brush, c: &Colors, slider_w: f32, show_px
     }
 }
 
+/// Brush / eraser switch.
 fn tool_group(ui: &mut Ui, brush: &mut Brush, c: &Colors) {
     widgets::segmented(
         ui,
@@ -127,6 +137,7 @@ fn tool_group(ui: &mut Ui, brush: &mut Brush, c: &Colors) {
     );
 }
 
+/// Undo, clear and settings buttons.
 fn action_group(ui: &mut Ui, c: &Colors, action: &mut Option<Action>) {
     if widgets::button(ui, "undo", c, "Annuler", Kind::Ghost, 0.0).clicked() {
         *action = Some(Action::Undo);

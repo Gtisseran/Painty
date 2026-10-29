@@ -9,18 +9,22 @@ use crate::theme::Mode;
 use crate::toolbar::{self, Action};
 use crate::widgets::{self, Kind};
 
+/// Main application state, updated every frame by egui.
 pub struct Painty {
     canvas: Canvas,
     brush: Brush,
     mode: Mode,
     canvas_follows_theme: bool,
+    /// Ink color used on the previous frame, to detect a background change.
     last_ink: Option<Color32>,
+    /// Settings values as last written to disk, to avoid saving every frame.
     last_saved: (Mode, bool),
     settings_open: bool,
     confirm_clear: bool,
 }
 
 impl Painty {
+    /// Loads the saved settings and builds the initial state.
     pub fn new() -> Self {
         let cfg = config::load();
         let ink = cfg.mode.colors(cfg.canvas_follows_theme).ink;
@@ -45,7 +49,7 @@ impl eframe::App for Painty {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let c = self.mode.colors(self.canvas_follows_theme);
 
-        // Si le fond change, l'encre par défaut suit (noir <-> blanc)
+        // When the canvas background changes, the default ink follows (black <-> white).
         if let Some(prev) = self.last_ink {
             if prev != c.ink && self.brush.color == prev {
                 self.brush.color = c.ink;
@@ -53,6 +57,7 @@ impl eframe::App for Painty {
         }
         self.last_ink = Some(c.ink);
 
+        // Ctrl+Z undoes the last stroke, unless a dialog is open.
         let modal_open = self.settings_open || self.confirm_clear;
         if !modal_open && ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z)) {
             self.canvas.undo();
@@ -65,6 +70,7 @@ impl eframe::App for Painty {
         match toolbar::show(ctx, &mut self.brush, &c) {
             Some(Action::Undo) => self.canvas.undo(),
             Some(Action::Clear) => {
+                // Nothing to clear: skip the confirmation.
                 if !self.canvas.is_empty() {
                     self.confirm_clear = true;
                 }
@@ -81,14 +87,14 @@ impl eframe::App for Painty {
             &c,
         );
 
-        // Sauvegarde des réglages dès qu'ils changent
+        // Persist settings as soon as they change.
         let current = (self.mode, self.canvas_follows_theme);
         if current != self.last_saved {
             config::save(current.0, current.1);
             self.last_saved = current;
         }
 
-        // Confirmation « tout effacer »
+        // "Clear all" confirmation dialog.
         let mut confirm = false;
         let mut cancel = false;
         let dismissed = dialog::show(ctx, "confirm_clear", self.confirm_clear, &c, |ui| {

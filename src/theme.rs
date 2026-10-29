@@ -3,9 +3,12 @@ use eframe::egui::{
     TextStyle, Ui, Visuals,
 };
 
+/// Default ink on a white background.
 pub const INK_LIGHT: Color32 = Color32::from_rgb(20, 20, 20);
+/// Default ink on a dark background.
 pub const INK_DARK: Color32 = Color32::from_rgb(240, 240, 240);
 
+/// Interface theme chosen in the settings.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum Mode {
     #[default]
@@ -13,6 +16,7 @@ pub enum Mode {
     Dark,
 }
 
+/// All colors used by the interface for the current theme.
 #[derive(Clone, Copy)]
 pub struct Colors {
     pub dark: bool,
@@ -27,11 +31,14 @@ pub struct Colors {
     pub rail: Color32,
     pub danger: Color32,
     pub danger_hover: Color32,
+    /// Background of the drawing area.
     pub canvas_bg: Color32,
+    /// Default ink for this background.
     pub ink: Color32,
 }
 
 impl Mode {
+    /// Returns the colors for this theme. The canvas follows the theme only if asked.
     pub fn colors(self, canvas_follows_theme: bool) -> Colors {
         match self {
             Mode::Light => Colors {
@@ -74,7 +81,7 @@ impl Mode {
     }
 }
 
-/// Pastilles de couleur : la première est l'encre (noir ou blanc selon le fond).
+/// Color swatches. The first one is the ink, which is black or white depending on the background.
 pub fn palette(ink: Color32) -> [Color32; 6] {
     [
         ink,
@@ -86,7 +93,7 @@ pub fn palette(ink: Color32) -> [Color32; 6] {
     ]
 }
 
-/// Police Segoe UI (Windows) + tailles de texte plus lisibles.
+/// Loads Segoe UI (Windows) if available and sets readable text sizes.
 pub fn setup(ctx: &Context) {
     let mut fonts = FontDefinitions::default();
     if let Ok(bytes) = std::fs::read(r"C:\Windows\Fonts\segoeui.ttf") {
@@ -113,7 +120,7 @@ pub fn setup(ctx: &Context) {
     });
 }
 
-/// Applique le thème (clair ou sombre) au `Ui` courant et à ses enfants.
+/// Applies the theme to the current `Ui` and its children.
 pub fn apply(ui: &mut Ui, c: &Colors) {
     let mut v = if c.dark { Visuals::dark() } else { Visuals::light() };
 

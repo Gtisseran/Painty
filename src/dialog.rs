@@ -5,8 +5,8 @@ use eframe::egui::{
 
 use crate::theme::{self, Colors};
 
-/// Popup modale animée (voile + glissement). Renvoie `true` si l'utilisateur
-/// demande la fermeture (clic sur le voile ou Échap).
+/// Animated modal popup with a dimmed background and a slide-in effect.
+/// Returns `true` when the user asks to close it (click on the background or Escape).
 pub fn show(
     ctx: &Context,
     id: &str,
@@ -14,6 +14,7 @@ pub fn show(
     c: &Colors,
     content: impl FnOnce(&mut Ui),
 ) -> bool {
+    // Fade and slide progress, from 0.0 (closed) to 1.0 (open).
     let t = ctx.animate_bool_with_time(Id::new(("dialog_anim", id)), open, 0.16);
     if t <= 0.0 {
         return false;
@@ -22,7 +23,7 @@ pub fn show(
     let mut dismissed = false;
     let screen = ctx.screen_rect();
 
-    // Voile
+    // Dimmed background. A click on it closes the dialog.
     egui::Area::new(Id::new(("dialog_scrim", id)))
         .order(Order::Foreground)
         .fixed_pos(screen.min)
@@ -35,8 +36,8 @@ pub fn show(
             }
         });
 
-    // Taille de l'écran dans les identifiants : à chaque redimensionnement,
-    // egui repart d'une mesure propre au lieu de garder l'ancienne taille.
+    // The screen size is part of the IDs: when the window is resized, egui starts
+    // measuring the dialog and its scroll area again instead of reusing the old size.
     let size_key = (screen.width().round() as i32, screen.height().round() as i32);
     let max_h = (screen.height() - 100.0).max(120.0);
 
@@ -52,6 +53,7 @@ pub fn show(
                 .inner_margin(Margin::same(20.0))
                 .show(ui, |ui| {
                     ui.set_width(300.0);
+                    // Scrolls when the window is too short for the content.
                     ScrollArea::vertical()
                         .id_salt(("dialog_scroll", id, size_key))
                         .max_height(max_h)

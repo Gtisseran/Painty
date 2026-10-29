@@ -5,20 +5,25 @@ use eframe::egui::{
 
 use crate::theme::Colors;
 
+/// Visual style of a text button.
 #[derive(Clone, Copy)]
 pub enum Kind {
+    /// Transparent until hovered.
     Ghost,
+    /// Filled with the segment background color.
     Soft,
+    /// Red, for destructive actions.
     Danger,
 }
 
+/// Shows a hand cursor over interactive elements.
 fn pointer_cursor(ui: &Ui, resp: &Response) {
     if resp.hovered() {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
 }
 
-/// Bouton texte avec fondu au survol.
+/// Text button with a fade on hover.
 pub fn button(ui: &mut Ui, id: &str, c: &Colors, label: &str, kind: Kind, min_w: f32) -> Response {
     let (base, hover, fg) = match kind {
         Kind::Ghost => (Color32::TRANSPARENT, c.hover, c.text),
@@ -43,6 +48,7 @@ pub fn button(ui: &mut Ui, id: &str, c: &Colors, label: &str, kind: Kind, min_w:
     } else {
         base.lerp_to_gamma(hover, t)
     };
+    // Pressed state.
     if resp.is_pointer_button_down_on() {
         fill = hover;
     }
@@ -55,7 +61,7 @@ pub fn button(ui: &mut Ui, id: &str, c: &Colors, label: &str, kind: Kind, min_w:
     resp
 }
 
-/// Pastille de couleur avec anneau animé.
+/// Color swatch with an animated selection ring.
 pub fn swatch(ui: &mut Ui, idx: usize, color: Color32, selected: bool, c: &Colors) -> Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(28.0, 28.0), Sense::click());
 
@@ -68,6 +74,7 @@ pub fn swatch(ui: &mut Ui, idx: usize, color: Color32, selected: bool, c: &Color
 
     let painter = ui.painter();
     let center = rect.center();
+    // The swatch grows slightly on hover.
     let r = 10.0 + hov * 1.5;
     painter.circle_filled(center, r, color);
     painter.circle_stroke(center, r, Stroke::new(1.0_f32, c.bar_border));
@@ -83,12 +90,13 @@ pub fn swatch(ui: &mut Ui, idx: usize, color: Color32, selected: bool, c: &Color
     resp
 }
 
+/// Thin vertical separator between toolbar groups.
 pub fn divider(ui: &mut Ui, c: &Colors) {
     let (rect, _) = ui.allocate_exact_size(vec2(1.0, 20.0), Sense::hover());
     ui.painter().rect_filled(rect, 0.0, c.bar_border);
 }
 
-/// Sélecteur segmenté avec pastille qui glisse.
+/// Segmented control with a pill that slides to the selected option.
 pub fn segmented<T: Copy + PartialEq>(
     ui: &mut Ui,
     id: &str,
@@ -102,6 +110,7 @@ pub fn segmented<T: Copy + PartialEq>(
     let size = vec2(seg_w * options.len() as f32 + pad * 2.0, h);
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
 
+    // Animated horizontal position of the pill, in option units.
     let current = options.iter().position(|(v, _)| *v == *value).unwrap_or(0);
     let pos = ui
         .ctx()
@@ -125,6 +134,7 @@ pub fn segmented<T: Copy + PartialEq>(
         );
         let resp = ui.interact(cell, Id::new(("seg_cell", id, i)), Sense::click());
 
+        // Text darkens as the pill reaches it, and on hover.
         let sel = (1.0 - (pos - i as f32).abs()).clamp(0.0, 1.0);
         let hover = if resp.hovered() { 0.6 } else { 0.0 };
         let color = c.text_dim.lerp_to_gamma(c.text, sel.max(hover));
@@ -147,7 +157,7 @@ pub fn segmented<T: Copy + PartialEq>(
     }
 }
 
-/// Icône paramètres : trait sombre sur fond clair, trait blanc sur fond sombre.
+/// Settings icon. Uses the light or dark SVG depending on the theme.
 pub fn settings_button(ui: &mut Ui, c: &Colors) -> Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(34.0, 32.0), Sense::click());
     let t = ui
@@ -158,6 +168,7 @@ pub fn settings_button(ui: &mut Ui, c: &Colors) -> Response {
         .rect_filled(rect, Rounding::same(9.0), c.hover.gamma_multiply(t));
 
     let icon_rect = Rect::from_center_size(rect.center(), vec2(18.0, 17.0));
+    // Dark theme: white icon. Light theme: dark icon.
     let source = if c.dark {
         egui::include_image!("../assets/settings_light.svg")
     } else {
