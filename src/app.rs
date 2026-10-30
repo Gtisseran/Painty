@@ -1,9 +1,10 @@
 use eframe::egui::{self, Color32, Frame, Key, RichText};
 
 use crate::canvas::Canvas;
-use crate::config;
+use crate::config::{self, Config};
 use crate::dialog;
 use crate::export::{self, Format};
+use crate::i18n::{self, t, tf, Lang};
 use crate::model::Brush;
 use crate::settings;
 use crate::theme::Mode;
@@ -44,10 +45,11 @@ pub struct Painty {
     brush: Brush,
     mode: Mode,
     canvas_follows_theme: bool,
+    language: Lang,
     /// Ink color used on the previous frame, to detect a background change.
     last_ink: Option<Color32>,
-    /// Settings values as last written to disk, to avoid saving every frame.
-    last_saved: (Mode, bool),
+    /// Settings as last written to disk, to avoid saving every frame.
+    last_saved: Config,
     /// The modal dialog currently requested.
     modal: Modal,
     /// Kept outside `Modal` so the dialog content can still be drawn while it fades out.
@@ -70,6 +72,7 @@ impl Painty {
         updater::cleanup();
 
         let cfg = config::load();
+        i18n::set_lang(cfg.language);
         let ink = cfg.mode.colors(cfg.canvas_follows_theme).ink;
 
         let mut brush = Brush::default();
@@ -80,8 +83,9 @@ impl Painty {
             brush,
             mode: cfg.mode,
             canvas_follows_theme: cfg.canvas_follows_theme,
+            language: cfg.language,
             last_ink: Some(ink),
-            last_saved: (cfg.mode, cfg.canvas_follows_theme),
+            last_saved: cfg,
             modal: Modal::None,
             export_form: ExportForm::default(),
             error_text: String::new(),
@@ -258,6 +262,7 @@ impl eframe::App for Painty {
             &mut settings_open,
             &mut self.mode,
             &mut self.canvas_follows_theme,
+            &mut self.language,
             &mut self.updater,
             &c,
         );
@@ -266,9 +271,13 @@ impl eframe::App for Painty {
         }
 
         // Persist settings as soon as they change.
-        let current = (self.mode, self.canvas_follows_theme);
+        let current = Config {
+            mode: self.mode,
+            canvas_follows_theme: self.canvas_follows_theme,
+            language: self.language,
+        };
         if current != self.last_saved {
-            config::save(current.0, current.1);
+            config::save(&current);
             self.last_saved = current;
         }
 
@@ -277,15 +286,17 @@ impl eframe::App for Painty {
         let mut cancel = false;
         let clear_open = self.modal == Modal::ClearConfirm;
         let dismissed_clear = dialog::show(ctx, "confirm_clear", clear_open, &c, 300.0, |ui| {
-            ui.label(RichText::new("Clear everything?").size(18.0).strong());
+            ui.label(RichText::new(t("dialog.clear.title")).size(18.0).strong());
             ui.add_space(6.0);
-            ui.label(RichText::new("This drawing will be permanently deleted.").color(c.text_dim));
+            ui.label(RichText::new(t("dialog.clear.body")).color(c.text_dim));
             ui.add_space(16.0);
             ui.horizontal(|ui| {
-                if widgets::button(ui, "keep", &c, "Keep", Kind::Soft, 146.0).clicked() {
+                if widgets::button(ui, "keep", &c, t("button.keep"), Kind::Soft, 146.0).clicked() {
                     cancel = true;
                 }
-                if widgets::button(ui, "wipe", &c, "Clear all", Kind::Danger, 146.0).clicked() {
+                if widgets::button(ui, "wipe", &c, t("button.clear_all"), Kind::Danger, 146.0)
+                    .clicked()
+                {
                     confirm = true;
                 }
             });
@@ -306,13 +317,13 @@ impl eframe::App for Painty {
         let export_open = self.modal == Modal::Export;
         let dismissed_export = dialog::show(ctx, "export_form", export_open, &c, 300.0, |ui| {
             let form = &mut self.export_form;
-            ui.label(RichText::new("Export drawing").size(18.0).strong());
+            ui.label(RichText::new(t("dialog.export.title")).size(18.0).strong());
             ui.add_space(12.0);
-            ui.label(RichText::new("Name").color(c.text_dim));
+            ui.label(RichText::new(t("export.name")).color(c.text_dim));
             ui.add_space(4.0);
             ui.add(egui::TextEdit::singleline(&mut form.name).desired_width(300.0));
             ui.add_space(10.0);
-            ui.label(RichText::new("Format").color(c.text_dim));
+            ui.label(RichText::new(t("export.format")).color(c.text_dim));
             ui.add_space(4.0);
             widgets::segmented(
                 ui,
@@ -324,10 +335,14 @@ impl eframe::App for Painty {
             );
             ui.add_space(16.0);
             ui.horizontal(|ui| {
-                if widgets::button(ui, "export_cancel", &c, "Cancel", Kind::Soft, 146.0).clicked() {
+                if widgets::button(ui, "export_cancel", &c, t("button.cancel"), Kind::Soft, 146.0)
+                    .clicked()
+                {
                     export_cancel = true;
                 }
-                if widgets::button(ui, "export_go", &c, "Export", Kind::Soft, 146.0).clicked() {
+                if widgets::button(ui, "export_go", &c, t("button.export"), Kind::Soft, 146.0)
+                    .clicked()
+                {
                     export_go = true;
                 }
             });
@@ -352,11 +367,13 @@ impl eframe::App for Painty {
         let mut error_close = false;
         let error_open = self.modal == Modal::Error;
         let dismissed_error = dialog::show(ctx, "export_error", error_open, &c, 300.0, |ui| {
-            ui.label(RichText::new("Export failed").size(18.0).strong());
+            ui.label(RichText::new(t("dialog.export_error.title")).size(18.0).strong());
             ui.add_space(6.0);
             ui.label(RichText::new(error.as_str()).color(c.text_dim));
             ui.add_space(16.0);
-            if widgets::button(ui, "export_error_close", &c, "Close", Kind::Soft, 300.0).clicked() {
+            if widgets::button(ui, "export_error_close", &c, t("button.close"), Kind::Soft, 300.0)
+                .clicked()
+            {
                 error_close = true;
             }
         });
@@ -379,26 +396,32 @@ impl eframe::App for Painty {
         let dismissed_update = dialog::show(ctx, "update", show_update, &c, 300.0, |ui| {
             match &status {
                 Status::Available(release) => {
-                    ui.label(RichText::new("Update available").size(18.0).strong());
+                    ui.label(RichText::new(t("update.title")).size(18.0).strong());
                     ui.add_space(6.0);
                     ui.label(
-                        RichText::new(format!("Painty {} is ready to install.", release.version))
+                        RichText::new(tf("update.ready", &[("version", release.version.as_str())]))
                             .color(c.text_dim),
                     );
                     if has_drawing {
                         ui.add_space(8.0);
                         ui.label(
-                            RichText::new("Your current drawing will be lost when Painty restarts.")
+                            RichText::new(t("update.lost_warning"))
                                 .color(c.danger)
                                 .size(13.0),
                         );
                     }
                     ui.add_space(16.0);
                     ui.horizontal(|ui| {
-                        if widgets::button(ui, "later", &c, "Later", Kind::Soft, 146.0).clicked() {
+                        if widgets::button(ui, "later", &c, t("button.later"), Kind::Soft, 146.0)
+                            .clicked()
+                        {
                             later = true;
                         }
-                        let install_label = if has_drawing { "Install anyway" } else { "Install" };
+                        let install_label = if has_drawing {
+                            t("button.install_anyway")
+                        } else {
+                            t("button.install")
+                        };
                         if widgets::button(ui, "install", &c, install_label, Kind::Soft, 146.0)
                             .clicked()
                         {
@@ -407,7 +430,7 @@ impl eframe::App for Painty {
                     });
                 }
                 Status::Downloading(progress) => {
-                    ui.label(RichText::new("Downloading update…").size(18.0).strong());
+                    ui.label(RichText::new(t("update.downloading")).size(18.0).strong());
                     ui.add_space(12.0);
                     let fraction = progress.fraction();
                     // Indeterminate (animated) bar when the size is unknown.
@@ -420,11 +443,13 @@ impl eframe::App for Painty {
                     ui.add(bar);
                 }
                 Status::InstallFailed(error) => {
-                    ui.label(RichText::new("Update failed").size(18.0).strong());
+                    ui.label(RichText::new(t("update.failed_title")).size(18.0).strong());
                     ui.add_space(6.0);
                     ui.label(RichText::new(error.as_str()).color(c.text_dim));
                     ui.add_space(16.0);
-                    if widgets::button(ui, "update_close", &c, "Close", Kind::Soft, 300.0).clicked() {
+                    if widgets::button(ui, "update_close", &c, t("button.close"), Kind::Soft, 300.0)
+                        .clicked()
+                    {
                         later = true;
                     }
                 }
@@ -447,20 +472,19 @@ impl eframe::App for Painty {
         let mut keep = false;
         let quit_open = self.modal == Modal::Quit;
         let dismissed_quit = dialog::show(ctx, "confirm_exit", quit_open, &c, 300.0, |ui| {
-            ui.label(RichText::new("Quit Painty?").size(18.0).strong());
+            ui.label(RichText::new(t("dialog.quit.title")).size(18.0).strong());
             ui.add_space(6.0);
-            ui.label(
-                RichText::new("Your drawing will be lost. Export it first if you want to keep it.")
-                    .color(c.text_dim),
-            );
+            ui.label(RichText::new(t("dialog.quit.body")).color(c.text_dim));
             ui.add_space(16.0);
             ui.horizontal(|ui| {
-                if widgets::button(ui, "quit_cancel", &c, "Keep drawing", Kind::Soft, 146.0)
+                if widgets::button(ui, "quit_cancel", &c, t("button.keep_drawing"), Kind::Soft, 146.0)
                     .clicked()
                 {
                     keep = true;
                 }
-                if widgets::button(ui, "quit_confirm", &c, "Quit", Kind::Danger, 146.0).clicked() {
+                if widgets::button(ui, "quit_confirm", &c, t("button.quit"), Kind::Danger, 146.0)
+                    .clicked()
+                {
                     quit = true;
                 }
             });

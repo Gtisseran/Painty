@@ -12,6 +12,8 @@ use std::time::Duration;
 
 use eframe::egui::Context;
 
+use crate::i18n::{t, tf};
+
 /// Latest release of the repository. The release must contain an asset named `painty.exe`.
 const API_URL: &str = "https://api.github.com/repos/Gtisseran/painty/releases/latest";
 const ASSET_NAME: &str = "painty.exe";
@@ -157,11 +159,9 @@ impl Updater {
                 // The thread ended without sending a result: never leave the UI
                 // stuck on "Checking" or "Downloading".
                 if matches!(self.status, Status::Checking) {
-                    self.status =
-                        Status::CheckFailed("The update check was interrupted.".to_owned());
+                    self.status = Status::CheckFailed(t("error.check_interrupted").to_owned());
                 } else if matches!(self.status, Status::Downloading(_)) {
-                    self.status =
-                        Status::InstallFailed("The update download was interrupted.".to_owned());
+                    self.status = Status::InstallFailed(t("error.download_interrupted").to_owned());
                 }
                 return;
             }
@@ -205,7 +205,7 @@ fn fetch_latest() -> Result<Option<Release>, String> {
         .map_err(|e| e.to_string())?;
     let json: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
 
-    let tag = json["tag_name"].as_str().ok_or("release has no tag")?;
+    let tag = json["tag_name"].as_str().ok_or(t("error.no_tag"))?;
     let version = tag.trim_start_matches('v').to_owned();
     if !is_newer(&version, env!("CARGO_PKG_VERSION")) {
         return Ok(None);
@@ -219,7 +219,7 @@ fn fetch_latest() -> Result<Option<Release>, String> {
                 .find(|asset| asset["name"].as_str() == Some(ASSET_NAME))
         })
         .and_then(|asset| asset["browser_download_url"].as_str())
-        .ok_or("painty.exe not found in the release")?
+        .ok_or(t("error.no_asset"))?
         .to_owned();
 
     Ok(Some(Release { version, url }))
@@ -241,7 +241,7 @@ fn is_newer(candidate: &str, current: &str) -> bool {
 /// Returns the path of the replaced executable, to restart it.
 fn download_and_replace(ctx: &Context, url: &str, progress: &Progress) -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let dir = exe.parent().ok_or("invalid install folder")?.to_path_buf();
+    let dir = exe.parent().ok_or(t("error.install_folder"))?.to_path_buf();
     let new_exe = dir.join(NEW_NAME);
     let old_exe = dir.join(OLD_NAME);
 
@@ -275,8 +275,9 @@ fn download_and_replace(ctx: &Context, url: &str, progress: &Progress) -> Result
     // the installation.
     if total > 0 && done != total {
         let _ = std::fs::remove_file(&new_exe);
-        return Err(format!(
-            "The download is incomplete ({done} of {total} bytes)."
+        return Err(tf(
+            "error.incomplete",
+            &[("done", done.to_string().as_str()), ("total", total.to_string().as_str())],
         ));
     }
 
@@ -297,7 +298,7 @@ fn restart(path: &Path) -> Result<(), String> {
     std::process::Command::new(path)
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("Could not restart Painty: {e}"))
+        .map_err(|e| tf("error.restart", &[("error", e.to_string().as_str())]))
 }
 
 /// Removes files left over from an update or a failed download. Call at startup.

@@ -1,5 +1,6 @@
 use eframe::egui::{self, vec2, Align2, Context, Frame, Id, Margin, Rounding, Stroke};
 
+use crate::i18n::t;
 use crate::model::{Brush, Tool};
 use crate::theme::{self, Colors};
 use crate::widgets::{self, Icon, Kind};
@@ -93,35 +94,37 @@ pub fn show(ctx: &Context, brush: &mut Brush, c: &Colors) -> Option<Action> {
                             "tool",
                             c,
                             &mut brush.tool,
-                            &[(Tool::Brush, "Brush"), (Tool::Eraser, "Eraser")],
+                            &[(Tool::Brush, t("tool.brush")), (Tool::Eraser, t("tool.eraser"))],
                             68.0,
                         );
 
                         widgets::divider(ui, c, full);
 
                         // Actions: text buttons on wide windows, icons on narrow ones.
-                        if widgets::button_anim(ui, "undo", c, "Undo", Kind::Ghost, 0.0, full)
+                        if widgets::button_anim(ui, "undo", c, t("action.undo"), Kind::Ghost, 0.0, full)
                             .clicked()
                         {
                             action = Some(Action::Undo);
                         }
-                        if widgets::button_anim(ui, "clear", c, "Clear", Kind::Ghost, 0.0, full)
+                        if widgets::button_anim(ui, "clear", c, t("action.clear"), Kind::Ghost, 0.0, full)
                             .clicked()
                         {
                             action = Some(Action::Clear);
                         }
-                        if widgets::icon_button(ui, "undo", c, Icon::Undo, "Undo", compact)
+                        if widgets::icon_button(ui, "undo", c, Icon::Undo, t("action.undo"), compact)
                             .clicked()
                         {
                             action = Some(Action::Undo);
                         }
-                        if widgets::icon_button(ui, "clear", c, Icon::Trash, "Clear", compact)
+                        if widgets::icon_button(ui, "clear", c, Icon::Trash, t("action.clear"), compact)
                             .clicked()
                         {
                             action = Some(Action::Clear);
                         }
 
-                        if widgets::icon_button(ui, "export", c, Icon::Export, "Export PNG (Ctrl+S)", 1.0).clicked() {
+                        if widgets::icon_button(ui, "export", c, Icon::Export, t("action.export"), 1.0)
+                            .clicked()
+                        {
                             action = Some(Action::Export);
                         }
 

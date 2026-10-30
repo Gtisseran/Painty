@@ -7,17 +7,21 @@ mod app;
 mod canvas;
 mod config;
 mod dialog;
+mod export;
+mod i18n;
 mod model;
 mod settings;
 mod theme;
 mod toolbar;
-mod widgets;
 mod updater;
-mod export;
+mod widgets;
 
 use eframe::egui;
 
 fn main() -> eframe::Result {
+    // Use the saved language from the first frame, including the window's first texts.
+    i18n::set_lang(config::load().language);
+
     // Window icon, embedded in the binary at compile time.
     let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png"))
         .expect("invalid icon");

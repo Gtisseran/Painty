@@ -24,10 +24,10 @@
 - **Smooth strokes** that follow the pointer without jitter
 - **Eraser** that cuts through existing strokes
 - **Undo and redo** (Ctrl+Z / Ctrl+Y)
-- **Export the whole drawing to PNG** (Ctrl+S)
+- **Export** to PNG or JPEG, with a name and a format (Ctrl+S)
 - **Clear all**, with confirmation
-- **Quit confirmation** so an unsaved drawing is not lost by accident
 - **Light and dark theme**, with a white or theme-coloured canvas
+- **French and English** interface, switchable in Settings
 - **Responsive toolbar** that adapts smoothly to the window width
 - **Automatic updates** from GitHub Releases, with a progress bar
 - **Settings saved** between sessions
@@ -46,7 +46,11 @@ Painty checks for updates when it starts. You can also check from **Settings →
 |----------|--------|
 | Ctrl+Z | Undo |
 | Ctrl+Y | Redo |
-| Ctrl+S | Export as PNG |
+| Ctrl+S | Export |
+
+## Languages
+
+The interface is available in English and French. The language is chosen in **Settings → Language** and saved with the other settings. Translations are stored in `assets/lang/` as JSON files, one per language.
 
 ## Build from source
 
@@ -83,3 +87,7 @@ Settings are stored in `%APPDATA%\Painty\settings.txt`.
 ## Project structure
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for a full description of each file.
+
+## License
+
+Released under the [MIT License](LICENSE). © 2026 Gtisseran

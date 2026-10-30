@@ -4,6 +4,7 @@ use eframe::egui::{
 };
 
 use crate::theme::Colors;
+use crate::i18n::Lang;
 
 /// Visual style of a text button.
 #[derive(Clone, Copy)]
@@ -295,6 +296,46 @@ pub fn settings_button(ui: &mut Ui, c: &Colors) -> Response {
         egui::include_image!("../assets/svg/settings_dark.svg")
     };
     Image::new(source).paint_at(ui, icon_rect);
+
+    pointer_cursor(ui, &resp);
+    resp
+}
+
+/// Language choice, with its flag. Highlighted when selected.
+pub fn language_button(ui: &mut Ui, c: &Colors, lang: Lang, selected: bool, width: f32) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, 34.0), Sense::click());
+    let hov = ui
+        .ctx()
+        .animate_bool_with_time(Id::new(("lang_hov", lang.code())), resp.hovered(), 0.12);
+    let sel = ui
+        .ctx()
+        .animate_bool_with_time(Id::new(("lang_sel", lang.code())), selected, 0.16);
+
+    let painter = ui.painter().clone();
+    let fill = c.segment_bg.lerp_to_gamma(c.hover, hov).lerp_to_gamma(c.segment_active, sel);
+    painter.rect_filled(rect, Rounding::same(9.0), fill);
+    if sel > 0.0 {
+        painter.rect_stroke(rect, Rounding::same(9.0), Stroke::new(1.0_f32, c.bar_border.gamma_multiply(sel)));
+    }
+
+    let flag_rect = Rect::from_min_size(
+        pos2(rect.min.x + 12.0, rect.center().y - 8.0),
+        vec2(22.0, 16.0),
+    );
+    let flag = match lang {
+        Lang::Fr => egui::include_image!("../assets/flags/fr.svg"),
+        Lang::En => egui::include_image!("../assets/flags/en.svg"),
+    };
+    Image::new(flag).paint_at(ui, flag_rect);
+
+    let color = if selected { c.text } else { c.text_dim };
+    painter.text(
+        pos2(flag_rect.max.x + 8.0, rect.center().y),
+        Align2::LEFT_CENTER,
+        lang.name(),
+        FontId::proportional(15.0),
+        color,
+    );
 
     pointer_cursor(ui, &resp);
     resp

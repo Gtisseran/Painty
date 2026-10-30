@@ -11,6 +11,7 @@ use image::codecs::jpeg::JpegEncoder;
 use image::{ImageFormat, RgbImage};
 
 use crate::model::Line;
+use crate::i18n::t;
 
 /// Margin kept around the drawing in the exported image, in points.
 const MARGIN: f32 = 8.0;
@@ -36,11 +37,11 @@ impl Format {
         }
     }
 
-    /// Name shown in the file dialog filter.
+        /// Name shown in the file dialog filter.
     pub fn label(self) -> &'static str {
         match self {
-            Format::Png => "PNG image",
-            Format::Jpeg => "JPEG image",
+            Format::Png => t("export.png"),
+            Format::Jpeg => t("export.jpeg"),
         }
     }
 }
@@ -94,7 +95,7 @@ pub fn save(
     }
 
     let pixels = downsample(&buf, bw, bh, s);
-    let image = RgbImage::from_raw(w, h, pixels).ok_or("invalid image size")?;
+    let image = RgbImage::from_raw(w, h, pixels).ok_or(t("error.export_size"))?;
 
     match format {
         Format::Png => image

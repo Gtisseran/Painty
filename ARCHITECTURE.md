@@ -5,21 +5,16 @@ This document describes how Painty is organised, file by file.
 ## Overview
 
 ```text
-main.rs
-  └── app.rs
-       ├── canvas.rs
-       │    └── model.rs
-       ├── toolbar.rs
-       │    └── widgets.rs
-       ├── settings.rs
-       │    └── dialog.rs
-       ├── dialogs
-       │    └── dialog.rs
-       ├── export.rs
-       ├── updater.rs
-       └── config.rs
+main.rs ──► app.rs ──┬─► canvas.rs ──► model.rs
+                    ├─► toolbar.rs ──► widgets.rs
+                    ├─► settings.rs ─┐
+                    ├─► dialogs ─────┴─► dialog.rs
+                    ├─► export.rs
+                    ├─► updater.rs
+                    ├─► i18n.rs ◄── assets/lang/*.json
+                    └─► config.rs
 
-theme.rs is shared by all UI files.
+theme.rs is used by every UI file.
 ```
 
 ## Folders
@@ -27,7 +22,10 @@ theme.rs is shared by all UI files.
 | Path | Content |
 |------|---------|
 | `src/` | Rust source code |
-| `assets/` | Logo and icons, embedded into the binary at compile time |
+| `assets/` | Images, icons, flags and translations, embedded into the binary at compile time |
+| `assets/svg/` | Icons (dark and light versions) |
+| `assets/flags/` | Flags used by the language switcher |
+| `assets/lang/` | Translations (`en.json`, `fr.json`) |
 | `dist/` | Installer output (ignored by Git) |
 | `target/` | Build output (ignored by Git) |
 
@@ -35,68 +33,77 @@ theme.rs is shared by all UI files.
 
 | File | Use |
 |------|-----|
-| `icon.png` | Logo, window icon and README header (256×256 PNG) |
+| `icon.png` | Logo, window icon and README header (256 × 256 PNG) |
 | `painty.ico` | Executable and installer icon (multi-size ICO) |
-| `settings_dark.svg` | Settings icon on the light theme (dark stroke) |
-| `settings_light.svg` | Settings icon on the dark theme (white stroke) |
-| `undo_dark.svg` / `undo_light.svg` | Undo icons for light and dark themes |
-| `trash_dark.svg` / `trash_light.svg` | Clear icons for light and dark themes |
-| `export_dark.svg` / `export_light.svg` | Export icons for light and dark themes |
+| `svg/settings_dark.svg` / `svg/settings_light.svg` | Settings icons for dark and light themes |
+| `svg/undo_dark.svg` / `svg/undo_light.svg` | Undo icons for dark and light themes |
+| `svg/trash_dark.svg` / `svg/trash_light.svg` | Clear icons for dark and light themes |
+| `svg/export_dark.svg` / `svg/export_light.svg` | Export icons for dark and light themes |
+| `flags/fr.svg` / `flags/en.svg` | Flags used by the language switcher |
+| `lang/en.json` / `lang/fr.json` | Interface translations. Both files must contain the same keys. |
 
-Icons are loaded with `egui::include_image!`, so they are embedded in the executable and do not need to be distributed separately.
+Icons and flags are loaded using `egui::include_image!`, so they are embedded in the executable and do not need to be distributed separately.
 
 ## Source Files
 
 | File | Role |
 |------|------|
-| `main.rs` | Application entry point. Configures window options, window icon, image loaders and fonts. Hides the console in release builds. |
-| `app.rs` | Main application state (`Painty`). Handles shortcuts, the quit confirmation and draws each frame, including the canvas, toolbar and dialogs. |
-| `canvas.rs` | Drawing area. Smooths pointer input, renders strokes, splits strokes when erasing and manages undo/redo history. |
-| `model.rs` | Core data types: `Tool`, `Line` (a single stroke) and `Brush` (current brush settings). |
+| `main.rs` | Entry point. Configures window options, the window icon, image loaders and fonts. Hides the console in release builds. |
+| `app.rs` | Main application state (`Painty`). Handles keyboard shortcuts, the currently open dialog (`Modal`) and frame rendering. |
+| `canvas.rs` | Drawing area. Smooths pointer movement, renders strokes, erases by splitting them and maintains undo/redo history. |
+| `model.rs` | Core data types: `Tool`, `Line` (a single stroke) and `Brush` (current settings). |
 | `toolbar.rs` | Floating toolbar at the bottom of the window. Elements fold in and out with animations depending on the available width. |
-| `widgets.rs` | Custom UI controls: text buttons, icon buttons, color swatches, segmented controls and settings icons. |
-| `dialog.rs` | Modal dialog system with a dimmed background, slide-in animation and scrolling support for short windows. |
-| `settings.rs` | Settings dialog, including theme, canvas background, updates, version and license information. |
-| `export.rs` | PNG export. Rasterises the canvas strokes into an image and saves the result. |
-| `updater.rs` | Checks for and installs updates through GitHub Releases, with download progress handled in background threads. |
-| `config.rs` | Loads and saves settings to `%APPDATA%\Painty\settings.txt`. |
-| `theme.rs` | Defines light and dark colors, the Segoe UI font and the egui visual style. |
+| `widgets.rs` | Custom UI controls: text buttons, icon buttons, color swatches, segmented controls, language button and settings icon. |
+| `dialog.rs` | Modal popup system: dimmed background, slide-in animation and scrolling when the window is too short. |
+| `settings.rs` | Settings dialog: theme, canvas background, language, updates, version and license information. |
+| `export.rs` | Exports drawings to PNG or JPEG. Renders at 3× resolution and averages pixels for smoother edges. |
+| `updater.rs` | Checks for updates and handles self-updates through GitHub Releases, including download progress. Runs in background threads. |
+| `i18n.rs` | Translation system. Loads JSON files and provides `t("key")` for plain text and `tf("key", &[...])` for formatted text. |
+| `config.rs` | Loads and saves settings (theme, canvas background and language) to `%APPDATA%\Painty\settings.txt`. |
+| `theme.rs` | Defines light and dark theme colors, the Segoe UI font and the egui style. |
 
 ## Drawing
 
-- **Brush:** Pointer positions are smoothed using `SMOOTHING` in `canvas.rs`, then added to a `Line`. `Line::push` skips points that are too close together, keeping long strokes lightweight. Strokes are rendered as polylines with rounded caps and joins.
-- **Eraser:** Each erase operation checks strokes within the eraser radius. Affected strokes are split into runs of points that remain outside the erased area, preventing unwanted gaps.
-- **Undo / Redo:** Each completed stroke or erase operation creates a history checkpoint. Strokes are shared using `Arc`, so checkpoints only need to copy pointers. History is limited by `HISTORY_LIMIT`.
+- **Brush:** Pointer positions are smoothed using `SMOOTHING` in `canvas.rs`. The smoothing is time-based, so it behaves consistently at any frame rate. Points are then added to a `Line`. `Line::push` skips points that are too close together, keeping long strokes lightweight. Each stroke is rendered with rounded joins.
+- **Eraser:** Each eraser step cuts every stroke within the eraser radius. Strokes are split into runs of points that were not erased, so no gaps are left behind. A complete eraser gesture counts as one undo step.
+- **Undo / Redo:** Each finished stroke or erase operation creates a checkpoint. Strokes are shared using `Arc`, so checkpoints only need to copy pointers. History is limited to `HISTORY_LIMIT` steps.
+
+## Dialogs
+
+`app.rs` maintains a single `Modal` value, which can represent the settings dialog, clear confirmation, export form, export error or quit confirmation.
+
+The update prompt is driven by the updater status and waits until no other dialog is visible. Each dialog is rendered through `dialog.rs`, which preserves its content while it fades out.
 
 ## Export
 
-`export.rs` creates an RGBA image buffer filled with the canvas background, renders each stroke as rounded segments and saves the result using the `image` crate. The image covers the bounding box of every stroke, with a small margin, so resizing the window does not cut the drawing.
+The export dialog asks for a file name and format. Once confirmed, a file dialog lets the user choose where to save the drawing.
 
-The exported image uses the screen's pixel density (`pixels_per_point`) to maintain visual sharpness.
+`export.rs` renders the entire drawing (not just the visible area) at three times the original resolution, averages each block of pixels and saves the result. The exported background uses the current canvas color.
 
 ## Update Flow
 
 1. `fetch_latest()` retrieves the latest GitHub release and compares its tag with the version defined in `Cargo.toml`.
-2. If a newer version is available, the updater looks for the `painty.exe` release asset.
-3. When installation starts, the executable is downloaded next to the current one in chunks. `Progress` tracks the downloaded bytes, and the UI reads this information each frame.
-4. The current executable is renamed, and the downloaded executable takes its place.
+2. If a newer version is available, it looks for the `painty.exe` release asset.
+3. When the user installs the update, the executable is downloaded next to the current one in chunks. `Progress` tracks the bytes received, and the UI reads this value every frame.
+4. Incomplete downloads are rejected. Otherwise, the current executable is renamed and replaced with the downloaded version.
 5. The new executable is launched, and the current application window closes.
-6. On the next launch, `cleanup()` removes leftover update files.
+6. On the next launch, `cleanup()` removes any leftover update files.
 
 ## Data Flow (One Frame)
 
-1. `app.rs` checks the updater status and retrieves the current theme from `theme.rs`.
-2. Keyboard shortcuts are processed, unless a dialog or the update prompt is open.
+1. `app.rs` checks the updater status and reads the current theme from `theme.rs`.
+2. Keyboard shortcuts are processed unless a dialog is open.
 3. `canvas.rs` handles pointer input and renders the strokes.
-4. `toolbar.rs` handles brush controls and returns any triggered actions.
-5. `settings.rs` and other dialog-related components render settings, clear confirmations, export errors and update prompts through `dialog.rs`.
+4. `toolbar.rs` handles brush settings and returns any triggered actions.
+5. Dialogs are rendered one at a time through `dialog.rs`.
 6. When a setting changes, `config.rs` saves the updated configuration to disk.
 
 ## Build Files
 
 | File | Role |
 |------|------|
-| `Cargo.toml` | Project dependencies, version and license information |
+| `Cargo.toml` | Dependencies, application version and license |
 | `build.rs` | Embeds `assets/painty.ico` into `painty.exe` on Windows |
-| `painty.iss` | Inno Setup installer script |
+| `painty.iss` | Inno Setup configuration for building the installer |
 | `run.ps1` | Sets the terminal tab title and runs `cargo run` |
+| `build.ps1` | Builds the release executable using `cargo build --release` and creates the installer using Inno Setup |
