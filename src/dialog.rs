@@ -6,12 +6,14 @@ use eframe::egui::{
 use crate::theme::{self, Colors};
 
 /// Animated modal popup with a dimmed background and a slide-in effect.
+/// `width` is the popup width in pixels.
 /// Returns `true` when the user asks to close it (click on the background or Escape).
 pub fn show(
     ctx: &Context,
     id: &str,
     open: bool,
     c: &Colors,
+    width: f32,
     content: impl FnOnce(&mut Ui),
 ) -> bool {
     // Fade and slide progress, from 0.0 (closed) to 1.0 (open).
@@ -39,7 +41,8 @@ pub fn show(
     // The screen size is part of the IDs: when the window is resized, egui starts
     // measuring the dialog and its scroll area again instead of reusing the old size.
     let size_key = (screen.width().round() as i32, screen.height().round() as i32);
-    let max_h = (screen.height() - 100.0).max(120.0);
+    // Leave a small margin around the popup, so it uses most of the window height.
+    let max_h = (screen.height() - 40.0).max(120.0);
 
     egui::Area::new(Id::new(("dialog_box", id, size_key)))
         .order(Order::Tooltip)
@@ -52,14 +55,14 @@ pub fn show(
                 .rounding(Rounding::same(18.0))
                 .inner_margin(Margin::same(20.0))
                 .show(ui, |ui| {
-                    ui.set_width(300.0);
-                    // Scrolls when the window is too short for the content.
+                    ui.set_width(width);
+                    // Scrolls only when the window is too short for the content.
                     ScrollArea::vertical()
                         .id_salt(("dialog_scroll", id, size_key))
                         .max_height(max_h)
                         .auto_shrink([false, true])
                         .show(ui, |ui| {
-                            ui.set_width(300.0);
+                            ui.set_width(width);
                             content(ui);
                         });
                 });

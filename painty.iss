@@ -1,14 +1,17 @@
 ; Inno Setup script for Painty.
 ; Build with: ISCC painty.iss   (or open it in Inno Setup and press F9)
 
+; Single place to change the version. Keep it in sync with Cargo.toml.
+#define MyAppVersion "0.1.0"
+
 [Setup]
 AppName=Painty
-AppVersion=0.1.0
+AppVersion={#MyAppVersion}
 AppPublisher=Gtisseran
 DefaultDirName={autopf}\Painty
 DefaultGroupName=Painty
 OutputDir=dist
-OutputBaseFilename=PaintySetup-{#AppVersion}
+OutputBaseFilename=PaintySetup-{#MyAppVersion}
 SetupIconFile=assets\painty.ico
 UninstallDisplayIcon={app}\painty.exe
 Compression=lzma2

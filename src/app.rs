@@ -7,6 +7,7 @@ use crate::model::Brush;
 use crate::settings;
 use crate::theme::Mode;
 use crate::toolbar::{self, Action};
+use crate::updater::{self, Status, Updater};
 use crate::widgets::{self, Kind};
 
 /// Main application state, updated every frame by egui.
@@ -21,11 +22,17 @@ pub struct Painty {
     last_saved: (Mode, bool),
     settings_open: bool,
     confirm_clear: bool,
+    updater: Updater,
+    /// True once the automatic update check has been started.
+    update_checked: bool,
 }
 
 impl Painty {
     /// Loads the saved settings and builds the initial state.
     pub fn new() -> Self {
+        // Remove the executable left over from the previous update.
+        updater::cleanup();
+
         let cfg = config::load();
         let ink = cfg.mode.colors(cfg.canvas_follows_theme).ink;
 
@@ -41,12 +48,21 @@ impl Painty {
             last_saved: (cfg.mode, cfg.canvas_follows_theme),
             settings_open: false,
             confirm_clear: false,
+            updater: Updater::default(),
+            update_checked: false,
         }
     }
 }
 
 impl eframe::App for Painty {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Silent update check on the first frame. Errors are not shown.
+        if !self.update_checked {
+            self.update_checked = true;
+            self.updater.check(ctx, false);
+        }
+        self.updater.poll(ctx);
+
         let c = self.mode.colors(self.canvas_follows_theme);
 
         // When the canvas background changes, the default ink follows (black <-> white).
@@ -84,6 +100,7 @@ impl eframe::App for Painty {
             &mut self.settings_open,
             &mut self.mode,
             &mut self.canvas_follows_theme,
+            &mut self.updater,
             &c,
         );
 
@@ -97,7 +114,7 @@ impl eframe::App for Painty {
         // "Clear all" confirmation dialog.
         let mut confirm = false;
         let mut cancel = false;
-        let dismissed = dialog::show(ctx, "confirm_clear", self.confirm_clear, &c, |ui| {
+        let dismissed = dialog::show(ctx, "confirm_clear", self.confirm_clear, &c, 300.0, |ui| {
             ui.label(RichText::new("Clear everything?").size(18.0).strong());
             ui.add_space(6.0);
             ui.label(RichText::new("This drawing will be permanently deleted.").color(c.text_dim));
@@ -117,6 +134,58 @@ impl eframe::App for Painty {
         }
         if confirm || cancel || dismissed {
             self.confirm_clear = false;
+        }
+
+        // Update prompt: shown only when a new version is available,
+        // is being installed, or failed to install.
+        let status = self.updater.status.clone();
+        let prompt_open = matches!(
+            status,
+            Status::Available(_) | Status::Downloading | Status::InstallFailed(_)
+        );
+        let mut install = false;
+        let mut later = false;
+        let dismissed_update = dialog::show(ctx, "update", prompt_open, &c, 300.0, |ui| match &status {
+            Status::Available(release) => {
+                ui.label(RichText::new("Update available").size(18.0).strong());
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new(format!("Painty {} is ready to install.", release.version))
+                        .color(c.text_dim),
+                );
+                ui.add_space(16.0);
+                ui.horizontal(|ui| {
+                    if widgets::button(ui, "later", &c, "Later", Kind::Soft, 146.0).clicked() {
+                        later = true;
+                    }
+                    if widgets::button(ui, "install", &c, "Install", Kind::Soft, 146.0).clicked() {
+                        install = true;
+                    }
+                });
+            }
+            Status::Downloading => {
+                ui.label(RichText::new("Downloading update…").size(18.0).strong());
+            }
+            Status::InstallFailed(error) => {
+                ui.label(RichText::new("Update failed").size(18.0).strong());
+                ui.add_space(6.0);
+                ui.label(RichText::new(error.as_str()).color(c.text_dim));
+                ui.add_space(16.0);
+                if widgets::button(ui, "update_close", &c, "Close", Kind::Soft, 300.0).clicked() {
+                    later = true;
+                }
+            }
+            _ => {}
+        });
+
+        if install {
+            if let Status::Available(release) = self.updater.status.clone() {
+                self.updater.install(ctx, release);
+            }
+        }
+        // The prompt cannot be closed while the download is running.
+        if later || (dismissed_update && !matches!(self.updater.status, Status::Downloading)) {
+            self.updater.dismiss();
         }
     }
 }

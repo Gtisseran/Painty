@@ -12,6 +12,7 @@ mod settings;
 mod theme;
 mod toolbar;
 mod widgets;
+mod updater;
 
 use eframe::egui;
 
