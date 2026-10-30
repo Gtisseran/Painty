@@ -1,6 +1,6 @@
 use eframe::egui::{
-    self, pos2, vec2, Align2, Color32, CursorIcon, FontId, Id, Image, Painter, Pos2, Rect,
-    Response, Rounding, Sense, Shape, Stroke, Ui, Vec2,
+    self, pos2, vec2, Align2, Color32, CursorIcon, FontId, Id, Image, Rect, Response, Rounding,
+    Sense, Stroke, Ui, Vec2,
 };
 
 use crate::theme::Colors;
@@ -16,7 +16,7 @@ pub enum Kind {
     Danger,
 }
 
-/// Icons drawn directly with the painter.
+/// Icons loaded from assets/ (light and dark versions).
 #[derive(Clone, Copy)]
 pub enum Icon {
     Undo,
@@ -106,7 +106,8 @@ pub fn button_anim(
     resp
 }
 
-/// Square button with a drawn icon and a tooltip. Width and opacity follow `vis`.
+/// Square button with an icon from assets/ and a tooltip.
+/// Width and opacity follow `vis`.
 pub fn icon_button(ui: &mut Ui, id: &str, c: &Colors, icon: Icon, tip: &str, vis: f32) -> Response {
     let sense = if vis > 0.95 { Sense::click() } else { Sense::hover() };
     let (rect, resp) = alloc(ui, vec2(32.0 * vis, 32.0), sense, vis);
@@ -117,66 +118,30 @@ pub fn icon_button(ui: &mut Ui, id: &str, c: &Colors, icon: Icon, tip: &str, vis
     let t = ui
         .ctx()
         .animate_bool_with_time(Id::new(("icon_btn", id)), resp.hovered(), 0.12);
-    let painter = ui.painter().with_clip_rect(rect);
-    painter.rect_filled(rect, Rounding::same(9.0), c.hover.gamma_multiply(t * vis));
+    let old_clip = ui.clip_rect();
+    ui.set_clip_rect(rect);
 
-    let stroke = Stroke::new(1.8_f32, c.text.gamma_multiply(vis));
-    // Icons are designed on a 24x24 grid, scaled down to about 17 px.
-    let k = 0.7;
-    let origin = rect.center() - vec2(12.0 * k, 12.0 * k);
+    ui.painter()
+        .rect_filled(rect, Rounding::same(9.0), c.hover.gamma_multiply(t * vis));
 
-    match icon {
-        Icon::Undo => {
-            // Arrow body: down, rounded corner, then left.
-            let mut body = vec![(20.0, 20.0), (20.0, 13.0)];
-            for i in 0..=6 {
-                let a = -std::f32::consts::FRAC_PI_2 * i as f32 / 6.0;
-                body.push((16.0 + 4.0 * a.cos(), 13.0 + 4.0 * a.sin()));
-            }
-            body.push((4.0, 9.0));
-            poly(&painter, origin, k, &body, stroke);
-            poly(&painter, origin, k, &[(9.0, 14.0), (4.0, 9.0), (9.0, 4.0)], stroke);
-        }
-        Icon::Trash => {
-            poly(&painter, origin, k, &[(3.0, 6.0), (21.0, 6.0)], stroke);
-            poly(
-                &painter,
-                origin,
-                k,
-                &[(8.0, 6.0), (8.0, 4.0), (9.0, 3.0), (15.0, 3.0), (16.0, 4.0), (16.0, 6.0)],
-                stroke,
-            );
-            poly(
-                &painter,
-                origin,
-                k,
-                &[(5.0, 6.0), (5.0, 20.0), (7.0, 22.0), (17.0, 22.0), (19.0, 20.0), (19.0, 6.0)],
-                stroke,
-            );
-            poly(&painter, origin, k, &[(10.0, 11.0), (10.0, 17.0)], stroke);
-            poly(&painter, origin, k, &[(14.0, 11.0), (14.0, 17.0)], stroke);
-        }
-    }
+    // Icon is 18 px, centered. Clipped to the button while it folds.
+    let icon_rect = Rect::from_center_size(rect.center(), vec2(18.0, 18.0));
+    let tint = Color32::from_white_alpha((vis * 255.0) as u8);
+    let image = match (icon, c.dark) {
+        (Icon::Undo, false) => Image::new(egui::include_image!("../assets/undo_dark.svg")),
+        (Icon::Undo, true) => Image::new(egui::include_image!("../assets/undo_light.svg")),
+        (Icon::Trash, false) => Image::new(egui::include_image!("../assets/trash_dark.svg")),
+        (Icon::Trash, true) => Image::new(egui::include_image!("../assets/trash_light.svg")),
+    };
+    image.tint(tint).paint_at(ui, icon_rect);
+
+    ui.set_clip_rect(old_clip);
 
     if vis > 0.95 {
         pointer_cursor(ui, &resp);
         return resp.on_hover_text(tip);
     }
     resp
-}
-
-/// Draws a polyline from points on the icon grid, with round ends.
-fn poly(painter: &Painter, origin: Pos2, k: f32, pts: &[(f32, f32)], stroke: Stroke) {
-    let p: Vec<Pos2> = pts
-        .iter()
-        .map(|&(x, y)| origin + vec2(x * k, y * k))
-        .collect();
-    if let (Some(first), Some(last)) = (p.first().copied(), p.last().copied()) {
-        let r = stroke.width / 2.0;
-        painter.circle_filled(first, r, stroke.color);
-        painter.circle_filled(last, r, stroke.color);
-    }
-    painter.add(Shape::line(p, stroke));
 }
 
 /// Color swatch with an animated selection ring. Size and opacity follow `vis`.
