@@ -109,8 +109,18 @@ impl eframe::App for Painty {
         }
         self.last_ink = Some(c.ink);
 
+        // The update prompt is modal too: block shortcuts while it is shown.
+        let status = self.updater.status.clone();
+        let update_prompt = matches!(
+            status,
+            Status::Available(_) | Status::Downloading(_) | Status::InstallFailed(_)
+        );
+
         // Keyboard shortcuts, unless a dialog is open.
-        let modal_open = self.settings_open || self.confirm_clear || self.export_error.is_some();
+        let modal_open = self.settings_open
+            || self.confirm_clear
+            || self.export_error.is_some()
+            || update_prompt;
         if !modal_open {
             let (cmd, undo, redo, save) = ctx.input(|i| {
                 (
@@ -215,15 +225,15 @@ impl eframe::App for Painty {
         }
 
         // Update prompt: shown when a new version is available, while it downloads,
-        // or when the install failed.
-        let status = self.updater.status.clone();
-        let prompt_open = matches!(
-            status,
-            Status::Available(_) | Status::Downloading(_) | Status::InstallFailed(_)
-        );
+        // or when the install failed. It never stacks over another dialog: wait
+        // until the others have fully faded out.
+        let other_dialog_visible = dialog::is_visible(ctx, "settings")
+            || dialog::is_visible(ctx, "confirm_clear")
+            || dialog::is_visible(ctx, "export_error");
+        let show_update = update_prompt && !other_dialog_visible;
         let mut install = false;
         let mut later = false;
-        let dismissed_update = dialog::show(ctx, "update", prompt_open, &c, 300.0, |ui| {
+        let dismissed_update = dialog::show(ctx, "update", show_update, &c, 300.0, |ui| {
             match &status {
                 Status::Available(release) => {
                     ui.label(RichText::new("Update available").size(18.0).strong());

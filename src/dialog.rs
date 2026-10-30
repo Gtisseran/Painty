@@ -10,6 +10,13 @@ const EDGE_MARGIN: f32 = 16.0;
 /// Inner padding of the popup, on each side.
 const INNER_PADDING: f32 = 20.0;
 
+/// True while the dialog is on screen, including its fade-out.
+/// Call it after `show` has run for the current frame.
+pub fn is_visible(ctx: &Context, id: &str) -> bool {
+    ctx.data(|d| d.get_temp::<f32>(Id::new(("dialog_visibility", id))))
+        .is_some_and(|t| t > 0.0)
+}
+
 /// Animated modal popup with a dimmed background and a slide-in effect.
 /// `width` is the preferred popup width in pixels. It is reduced if the window is
 /// too narrow, and the popup is always kept inside the window.
@@ -24,6 +31,8 @@ pub fn show(
 ) -> bool {
     // Fade and slide progress, from 0.0 (closed) to 1.0 (open).
     let t = ctx.animate_bool_with_time(Id::new(("dialog_anim", id)), open, 0.16);
+    // Remembered so callers can check whether another dialog is still on screen.
+    ctx.data_mut(|d| d.insert_temp(Id::new(("dialog_visibility", id)), t));
     if t <= 0.0 {
         return false;
     }
