@@ -3,13 +3,28 @@ use eframe::egui::{self, Color32, Frame, Key, RichText};
 use crate::canvas::Canvas;
 use crate::config;
 use crate::dialog;
-use crate::export;
+use crate::export::{self, Format};
 use crate::model::Brush;
 use crate::settings;
 use crate::theme::Mode;
 use crate::toolbar::{self, Action};
 use crate::updater::{self, Status, Updater};
 use crate::widgets::{self, Kind};
+
+/// Export options chosen in the export popup.
+struct ExportForm {
+    name: String,
+    format: Format,
+}
+
+impl Default for ExportForm {
+    fn default() -> Self {
+        Self {
+            name: "painty".to_owned(),
+            format: Format::Png,
+        }
+    }
+}
 
 /// Main application state, updated every frame by egui.
 pub struct Painty {
@@ -29,6 +44,8 @@ pub struct Painty {
     close_confirmed: bool,
     /// Message of the last failed export, shown in a dialog.
     export_error: Option<String>,
+    /// Export popup, shown while the user chooses the name and format.
+    export_form: Option<ExportForm>,
     updater: Updater,
     /// True once the automatic update check has been started.
     update_checked: bool,
@@ -60,14 +77,22 @@ impl Painty {
             confirm_exit: false,
             close_confirmed: false,
             export_error: None,
+            export_form: None,
             updater: Updater::default(),
             update_checked: false,
             centered: false,
         }
     }
 
-    /// Asks where to save, then writes the drawing as a PNG.
-    fn export(&mut self, ctx: &egui::Context, bg: Color32) {
+    /// Opens the export popup, unless there is nothing to draw on yet.
+    fn open_export(&mut self) {
+        if self.canvas.rect().is_some() {
+            self.export_form = Some(ExportForm::default());
+        }
+    }
+
+    /// Asks where to save, then writes the drawing in the chosen format.
+    fn save_export(&mut self, ctx: &egui::Context, form: ExportForm, bg: Color32) {
         let Some(rect) = self.canvas.rect() else {
             return;
         };
@@ -76,23 +101,39 @@ impl Painty {
         let (origin, size) = export::bounds(self.canvas.lines())
             .map(|bounds| (bounds.min, bounds.size()))
             .unwrap_or((rect.min, rect.size()));
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("PNG image", &["png"])
-            .set_file_name("painty.png")
+
+        // Remove characters that are not allowed in file names.
+        let name: String = form
+            .name
+            .trim()
+            .chars()
+            .map(|c| if "\\/:*?\"<>|".contains(c) { '_' } else { c })
+            .collect();
+        let name = if name.is_empty() { "painty".to_owned() } else { name };
+        let ext = form.format.ext();
+
+        let Some(mut path) = rfd::FileDialog::new()
+            .add_filter(form.format.label(), &[ext])
+            .set_file_name(format!("{name}.{ext}"))
             .save_file()
         else {
             // Dialog cancelled.
             return;
         };
-        // Add the extension if the user typed a name without one.
-        let path = if path.extension().is_none() {
-            path.with_extension("png")
-        } else {
-            path
-        };
+        // Add the extension if the user typed a name without the right one.
+        let has_ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case(ext));
+        if !has_ext {
+            let mut os = path.into_os_string();
+            os.push(format!(".{ext}"));
+            path = os.into();
+        }
 
-        if let Err(error) = export::save_png(
+        if let Err(error) = export::save(
             &path,
+            form.format,
             self.canvas.lines(),
             origin,
             size,
@@ -137,6 +178,7 @@ impl eframe::App for Painty {
                 self.settings_open = false;
                 self.confirm_clear = false;
                 self.export_error = None;
+                self.export_form = None;
             }
         } else {
             self.close_confirmed = false;
@@ -169,6 +211,7 @@ impl eframe::App for Painty {
             || self.confirm_clear
             || self.confirm_exit
             || self.export_error.is_some()
+            || self.export_form.is_some()
             || update_prompt;
         if !modal_open {
             let (cmd, undo, redo, save) = ctx.input(|i| {
@@ -186,7 +229,7 @@ impl eframe::App for Painty {
                 self.canvas.redo();
             }
             if cmd && save {
-                self.export(ctx, c.canvas_bg);
+                self.open_export();
             }
         }
 
@@ -203,7 +246,7 @@ impl eframe::App for Painty {
                 }
             }
             Some(Action::Settings) => self.settings_open = !self.settings_open,
-            Some(Action::Export) => self.export(ctx, c.canvas_bg),
+            Some(Action::Export) => self.open_export(),
             None => {}
         }
 
@@ -248,6 +291,51 @@ impl eframe::App for Painty {
             self.confirm_clear = false;
         }
 
+        // Export popup: name and format. The file location is asked afterwards.
+        let mut export_go = false;
+        let mut export_cancel = false;
+        let export_open = self.export_form.is_some();
+        let dismissed_export = dialog::show(ctx, "export_form", export_open, &c, 300.0, |ui| {
+            if let Some(form) = self.export_form.as_mut() {
+                ui.label(RichText::new("Export drawing").size(18.0).strong());
+                ui.add_space(12.0);
+                ui.label(RichText::new("Name").color(c.text_dim));
+                ui.add_space(4.0);
+                ui.add(egui::TextEdit::singleline(&mut form.name).desired_width(300.0));
+                ui.add_space(10.0);
+                ui.label(RichText::new("Format").color(c.text_dim));
+                ui.add_space(4.0);
+                widgets::segmented(
+                    ui,
+                    "export_format",
+                    &c,
+                    &mut form.format,
+                    &[(Format::Png, "PNG"), (Format::Jpeg, "JPEG")],
+                    147.0,
+                );
+                ui.add_space(16.0);
+                ui.horizontal(|ui| {
+                    if widgets::button(ui, "export_cancel", &c, "Cancel", Kind::Soft, 146.0)
+                        .clicked()
+                    {
+                        export_cancel = true;
+                    }
+                    if widgets::button(ui, "export_go", &c, "Export", Kind::Soft, 146.0).clicked() {
+                        export_go = true;
+                    }
+                });
+            }
+        });
+
+        if export_go {
+            if let Some(form) = self.export_form.take() {
+                self.save_export(ctx, form, c.canvas_bg);
+            }
+        }
+        if export_cancel || dismissed_export {
+            self.export_form = None;
+        }
+
         // Export error dialog.
         let error = self.export_error.clone().unwrap_or_default();
         let mut error_close = false;
@@ -281,6 +369,7 @@ impl eframe::App for Painty {
             || dialog::is_visible(ctx, "settings")
             || dialog::is_visible(ctx, "confirm_clear")
             || dialog::is_visible(ctx, "confirm_exit")
+            || dialog::is_visible(ctx, "export_form")
             || dialog::is_visible(ctx, "export_error");
         let show_update = update_prompt && !other_dialog_visible;
         let mut install = false;

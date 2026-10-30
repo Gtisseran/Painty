@@ -29,6 +29,23 @@ pub fn show(
     width: f32,
     content: impl FnOnce(&mut Ui),
 ) -> bool {
+    // Each opening gets a new session number. egui keeps the size of an area and of a
+    // scroll area between frames; a new id forces them to be measured again, so a
+    // reopened popup gets its real size instead of the one from its previous opening.
+    let was_open_id = Id::new(("dialog_was_open", id));
+    let session_id = Id::new(("dialog_session", id));
+    let was_open = ctx
+        .data(|d| d.get_temp::<bool>(was_open_id))
+        .unwrap_or(false);
+    if open && !was_open {
+        ctx.data_mut(|d| {
+            let next = d.get_temp::<u32>(session_id).unwrap_or(0) + 1;
+            d.insert_temp(session_id, next);
+        });
+    }
+    ctx.data_mut(|d| d.insert_temp(was_open_id, open));
+    let session = ctx.data(|d| d.get_temp::<u32>(session_id)).unwrap_or(0);
+
     // Fade and slide progress, from 0.0 (closed) to 1.0 (open).
     let t = ctx.animate_bool_with_time(Id::new(("dialog_anim", id)), open, 0.16);
     // Remembered so callers can check whether another dialog is still on screen.
@@ -60,11 +77,11 @@ pub fn show(
     let max_h = (screen.height() - 2.0 * EDGE_MARGIN).max(120.0);
     let max_content_h = (max_h - 2.0 * INNER_PADDING).max(40.0);
 
-    // The window size is part of the ids: when the window is resized, egui starts
-    // measuring the popup and its scroll area again instead of reusing the old size.
+    // The window size and the session are part of the ids: a resize or a new opening
+    // makes egui measure the popup and its scroll area again.
     let size_key = (screen.width().round() as i32, screen.height().round() as i32);
 
-    egui::Area::new(Id::new(("dialog_box", id, size_key)))
+    egui::Area::new(Id::new(("dialog_box", id, size_key, session)))
         .order(Order::Tooltip)
         .anchor(Align2::CENTER_CENTER, vec2(0.0, (1.0 - t) * 14.0))
         // Measure the content against the full height available, not a default size:
@@ -81,25 +98,13 @@ pub fn show(
                     // The popup is exactly as wide as its content, which never exceeds the window.
                     ui.set_width(width);
                     // Scrolls only when the window is too short for the content.
-                    let output = ScrollArea::vertical()
-                        .id_salt(("dialog_scroll", id, size_key))
+                    ScrollArea::vertical()
+                        .id_salt(("dialog_scroll", id, size_key, session))
                         .max_height(max_content_h)
                         .auto_shrink([false, true])
                         .show(ui, |ui| {
                             content(ui);
                         });
-
-                    // The scroll area sizes itself from the content measured on the previous
-                    // frame. When that height changes (e.g. a status line appears or a button
-                    // is replaced), ask for another frame so the popup is laid out again
-                    // instead of staying clipped until the next mouse movement.
-                    let content_h = output.content_size.y;
-                    let key = Id::new(("dialog_content_h", id));
-                    let previous = ctx.data(|d| d.get_temp::<f32>(key));
-                    if previous != Some(content_h) {
-                        ctx.data_mut(|d| d.insert_temp(key, content_h));
-                        ctx.request_repaint();
-                    }
                 });
         });
 

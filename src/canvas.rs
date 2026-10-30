@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use eframe::egui::{Color32, Painter, Pos2, Rect, Response, Sense, Shape, Stroke, Ui};
+use eframe::egui::{Color32, Painter, Pos2, Rect, Response, Sense, Stroke, Ui};
 
 use crate::model::{Brush, Line, Tool};
 
