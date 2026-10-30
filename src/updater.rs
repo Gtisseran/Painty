@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 use eframe::egui::{Context, ViewportCommand};
 
@@ -20,6 +21,19 @@ const OLD_NAME: &str = "painty.old.exe";
 const NEW_NAME: &str = "painty.new.exe";
 /// Size of each read while downloading. Smaller reads update the progress bar more often.
 const CHUNK_SIZE: usize = 64 * 1024;
+/// Maximum time to wait for the connection to GitHub to open.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Maximum time to wait for data while checking or downloading.
+const IO_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// HTTP client with timeouts, so a silent server cannot block the updater forever.
+fn agent() -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .timeout_connect(CONNECT_TIMEOUT)
+        .timeout_read(IO_TIMEOUT)
+        .timeout_write(IO_TIMEOUT)
+        .build()
+}
 
 /// A newer version found on GitHub.
 #[derive(Clone)]
@@ -130,11 +144,23 @@ impl Updater {
         let Some(rx) = &self.rx else {
             return;
         };
+        // Wake up regularly, so a thread that died without reporting is noticed
+        // even when nothing else asks for repaints.
+        ctx.request_repaint_after(Duration::from_millis(100));
         let message = match rx.try_recv() {
             Ok(message) => message,
             Err(TryRecvError::Empty) => return,
             Err(TryRecvError::Disconnected) => {
                 self.rx = None;
+                // The thread ended without sending a result: never leave the UI
+                // stuck on "Checking" or "Downloading".
+                if matches!(self.status, Status::Checking) {
+                    self.status =
+                        Status::CheckFailed("The update check was interrupted.".to_owned());
+                } else if matches!(self.status, Status::Downloading(_)) {
+                    self.status =
+                        Status::InstallFailed("The update download was interrupted.".to_owned());
+                }
                 return;
             }
         };
@@ -150,8 +176,12 @@ impl Updater {
                 };
             }
             Message::Installed(Ok(path)) => {
-                restart(&path);
-                ctx.send_viewport_cmd(ViewportCommand::Close);
+                // Only close the app once the new process has actually started.
+                if let Err(error) = restart(&path) {
+                    self.status = Status::InstallFailed(error);
+                } else {
+                    ctx.send_viewport_cmd(ViewportCommand::Close);
+                }
             }
             Message::Installed(Err(error)) => {
                 self.status = Status::InstallFailed(error);
@@ -163,7 +193,8 @@ impl Updater {
 /// Asks GitHub for the latest release. Returns `None` if this version is up to date.
 fn fetch_latest() -> Result<Option<Release>, String> {
     // Read the body as text, then parse it with serde_json (ureq's `json` feature is not enabled).
-    let body = ureq::get(API_URL)
+    let body = agent()
+        .get(API_URL)
         .set("User-Agent", "painty-updater")
         .set("Accept", "application/vnd.github+json")
         .call()
@@ -213,7 +244,7 @@ fn download_and_replace(ctx: &Context, url: &str, progress: &Progress) -> Result
     let old_exe = dir.join(OLD_NAME);
 
     // 1. Download the new executable next to the current one.
-    let response = ureq::get(url).call().map_err(|e| e.to_string())?;
+    let response = agent().get(url).call().map_err(|e| e.to_string())?;
     // Size of the file, if the server tells us. Without it the bar is indeterminate.
     let total = response
         .header("Content-Length")
@@ -235,7 +266,17 @@ fn download_and_replace(ctx: &Context, url: &str, progress: &Progress) -> Result
         progress.done.store(done, Ordering::Relaxed);
         ctx.request_repaint();
     }
+    file.flush().map_err(|e| e.to_string())?;
     drop(file);
+
+    // Refuse a truncated download: replacing the executable with it would break
+    // the installation.
+    if total > 0 && done != total {
+        let _ = std::fs::remove_file(&new_exe);
+        return Err(format!(
+            "The download is incomplete ({done} of {total} bytes)."
+        ));
+    }
 
     // 2. Windows allows renaming a running exe, but not overwriting it.
     let _ = std::fs::remove_file(&old_exe);
@@ -250,8 +291,11 @@ fn download_and_replace(ctx: &Context, url: &str, progress: &Progress) -> Result
 }
 
 /// Starts the replaced executable. The current process closes right after.
-fn restart(path: &Path) {
-    let _ = std::process::Command::new(path).spawn();
+fn restart(path: &Path) -> Result<(), String> {
+    std::process::Command::new(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Could not restart Painty: {e}"))
 }
 
 /// Removes files left over from an update or a failed download. Call at startup.
@@ -261,5 +305,31 @@ pub fn cleanup() {
             let _ = std::fs::remove_file(dir.join(OLD_NAME));
             let _ = std::fs::remove_file(dir.join(NEW_NAME));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dead_worker_does_not_leave_updater_busy() {
+        let ctx = Context::default();
+
+        let (tx, rx) = channel();
+        drop(tx);
+        let mut updater = Updater {
+            rx: Some(rx),
+            status: Status::Checking,
+        };
+        updater.poll(&ctx);
+        assert!(matches!(updater.status, Status::CheckFailed(_)));
+
+        let (tx, rx) = channel();
+        drop(tx);
+        updater.rx = Some(rx);
+        updater.status = Status::Downloading(Arc::new(Progress::default()));
+        updater.poll(&ctx);
+        assert!(matches!(updater.status, Status::InstallFailed(_)));
     }
 }
