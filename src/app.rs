@@ -23,6 +23,10 @@ pub struct Painty {
     last_saved: (Mode, bool),
     settings_open: bool,
     confirm_clear: bool,
+    /// True while the "quit without saving?" confirmation is shown.
+    confirm_exit: bool,
+    /// True once the window may close without asking (user confirmed or update restart).
+    close_confirmed: bool,
     /// Message of the last failed export, shown in a dialog.
     export_error: Option<String>,
     updater: Updater,
@@ -51,6 +55,8 @@ impl Painty {
             last_saved: (cfg.mode, cfg.canvas_follows_theme),
             settings_open: false,
             confirm_clear: false,
+            confirm_exit: false,
+            close_confirmed: false,
             export_error: None,
             updater: Updater::default(),
             update_checked: false,
@@ -104,6 +110,27 @@ impl eframe::App for Painty {
         }
         self.updater.poll(ctx);
 
+        // Ask before closing when the drawing would be lost. A restart after an
+        // update bypasses the question: the new version is already running.
+        let close_requested = ctx.input(|i| i.viewport().close_requested());
+        if close_requested {
+            if !self.close_confirmed && !self.canvas.is_empty() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.confirm_exit = true;
+                // The quit prompt takes over any other dialog.
+                self.settings_open = false;
+                self.confirm_clear = false;
+                self.export_error = None;
+            }
+        } else {
+            self.close_confirmed = false;
+        }
+        if self.updater.restart {
+            self.updater.restart = false;
+            self.close_confirmed = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+
         let c = self.mode.colors(self.canvas_follows_theme);
 
         // When the canvas background changes, the default ink follows (black <-> white).
@@ -124,6 +151,7 @@ impl eframe::App for Painty {
         // Keyboard shortcuts, unless a dialog is open.
         let modal_open = self.settings_open
             || self.confirm_clear
+            || self.confirm_exit
             || self.export_error.is_some()
             || update_prompt;
         if !modal_open {
@@ -232,8 +260,10 @@ impl eframe::App for Painty {
         // Update prompt: shown when a new version is available, while it downloads,
         // or when the install failed. It never stacks over another dialog: wait
         // until the others have fully faded out.
-        let other_dialog_visible = dialog::is_visible(ctx, "settings")
+        let other_dialog_visible = self.confirm_exit
+            || dialog::is_visible(ctx, "settings")
             || dialog::is_visible(ctx, "confirm_clear")
+            || dialog::is_visible(ctx, "confirm_exit")
             || dialog::is_visible(ctx, "export_error");
         let show_update = update_prompt && !other_dialog_visible;
         let mut install = false;
@@ -295,6 +325,38 @@ impl eframe::App for Painty {
         // The prompt cannot be closed while the download is running.
         if later || (dismissed_update && !matches!(self.updater.status, Status::Downloading(_))) {
             self.updater.dismiss();
+        }
+
+        // "Quit without saving?" confirmation, when the drawing is not empty.
+        let mut quit = false;
+        let mut keep = false;
+        let dismissed_exit = dialog::show(ctx, "confirm_exit", self.confirm_exit, &c, 300.0, |ui| {
+            ui.label(RichText::new("Quit Painty?").size(18.0).strong());
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new("Your drawing will be lost. Export it first if you want to keep it.")
+                    .color(c.text_dim),
+            );
+            ui.add_space(16.0);
+            ui.horizontal(|ui| {
+                if widgets::button(ui, "quit_cancel", &c, "Keep drawing", Kind::Soft, 146.0)
+                    .clicked()
+                {
+                    keep = true;
+                }
+                if widgets::button(ui, "quit_confirm", &c, "Quit", Kind::Danger, 146.0).clicked() {
+                    quit = true;
+                }
+            });
+        });
+
+        if quit {
+            self.confirm_exit = false;
+            self.close_confirmed = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        if keep || dismissed_exit {
+            self.confirm_exit = false;
         }
     }
 }

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use eframe::egui::{Context, ViewportCommand};
+use eframe::egui::Context;
 
 /// Latest release of the repository. The release must contain an asset named `painty.exe`.
 const API_URL: &str = "https://api.github.com/repos/Gtisseran/painty/releases/latest";
@@ -94,6 +94,8 @@ enum Message {
 pub struct Updater {
     rx: Option<Receiver<Message>>,
     pub status: Status,
+    /// Set after a successful install: the app must close so the new version starts.
+    pub restart: bool,
 }
 
 impl Updater {
@@ -176,11 +178,11 @@ impl Updater {
                 };
             }
             Message::Installed(Ok(path)) => {
-                // Only close the app once the new process has actually started.
+                // Only ask to close once the new process has actually started.
                 if let Err(error) = restart(&path) {
                     self.status = Status::InstallFailed(error);
                 } else {
-                    ctx.send_viewport_cmd(ViewportCommand::Close);
+                    self.restart = true;
                 }
             }
             Message::Installed(Err(error)) => {
@@ -321,6 +323,7 @@ mod tests {
         let mut updater = Updater {
             rx: Some(rx),
             status: Status::Checking,
+            restart: false,
         };
         updater.poll(&ctx);
         assert!(matches!(updater.status, Status::CheckFailed(_)));

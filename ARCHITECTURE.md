@@ -50,7 +50,7 @@ Icons are loaded with `egui::include_image!`, so they are embedded in the execut
 | File | Role |
 |------|------|
 | `main.rs` | Application entry point. Configures window options, window icon, image loaders and fonts. Hides the console in release builds. |
-| `app.rs` | Main application state (`Painty`). Handles shortcuts and draws each frame, including the canvas, toolbar and dialogs. |
+| `app.rs` | Main application state (`Painty`). Handles shortcuts, the quit confirmation and draws each frame, including the canvas, toolbar and dialogs. |
 | `canvas.rs` | Drawing area. Smooths pointer input, renders strokes, splits strokes when erasing and manages undo/redo history. |
 | `model.rs` | Core data types: `Tool`, `Line` (a single stroke) and `Brush` (current brush settings). |
 | `toolbar.rs` | Floating toolbar at the bottom of the window. Elements fold in and out with animations depending on the available width. |
@@ -86,7 +86,7 @@ The exported image uses the screen's pixel density (`pixels_per_point`) to maint
 ## Data Flow (One Frame)
 
 1. `app.rs` checks the updater status and retrieves the current theme from `theme.rs`.
-2. Keyboard shortcuts are processed, unless a dialog is currently open.
+2. Keyboard shortcuts are processed, unless a dialog or the update prompt is open.
 3. `canvas.rs` handles pointer input and renders the strokes.
 4. `toolbar.rs` handles brush controls and returns any triggered actions.
 5. `settings.rs` and other dialog-related components render settings, clear confirmations, export errors and update prompts through `dialog.rs`.

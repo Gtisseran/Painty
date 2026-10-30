@@ -26,6 +26,7 @@
 - **Undo and redo** (Ctrl+Z / Ctrl+Y)
 - **Export the whole drawing to PNG** (Ctrl+S)
 - **Clear all**, with confirmation
+- **Quit confirmation** so an unsaved drawing is not lost by accident
 - **Light and dark theme**, with a white or theme-coloured canvas
 - **Responsive toolbar** that adapts smoothly to the window width
 - **Automatic updates** from GitHub Releases, with a progress bar
