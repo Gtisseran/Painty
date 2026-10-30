@@ -67,7 +67,13 @@ pub fn show(ctx: &Context, brush: &mut Brush, c: &Colors) -> Option<Action> {
                                 brush.tool = Tool::Brush;
                             }
                         }
-                        ui.color_edit_button_srgba(&mut brush.color);
+                        // Opaque only: PNG export paints strokes over the
+                        // background and does not composite transparency yet.
+                        egui::widgets::color_picker::color_edit_button_srgba(
+                            ui,
+                            &mut brush.color,
+                            egui::widgets::color_picker::Alpha::Opaque,
+                        );
 
                         widgets::divider(ui, c, full);
 
