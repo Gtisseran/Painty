@@ -9,7 +9,7 @@ const HISTORY_LIMIT: usize = 100;
 /// Fraction of the remaining distance to the pointer kept per frame at 60 fps.
 /// Smoothing is time-based, so strokes feel the same at any refresh rate.
 /// Lower it for a more direct feel, raise it for smoother strokes.
-const SMOOTHING: f32 = 0.6;
+const SMOOTHING: f32 = 0.85;
 /// Eraser step, as a fraction of the eraser radius. Smaller = no gaps, slower.
 const ERASE_STEP: f32 = 0.25;
 
@@ -280,7 +280,7 @@ impl Canvas {
     }
 }
 
-/// Draws one stroke as a polyline with round ends and round sharp corners.
+/// Draws one stroke as round-jointed segments, so bends never show flat or square corners.
 fn draw_line(painter: &Painter, line: &Line) {
     let color = line.color;
     let radius = line.width / 2.0;
@@ -291,22 +291,14 @@ fn draw_line(painter: &Painter, line: &Line) {
         1 => {
             painter.circle_filled(pts[0], radius, color);
         }
-        n => {
-            // Draw the whole stroke as one polyline.
-            painter.add(Shape::line(pts.clone(), Stroke::new(line.width, color)));
-
-            // Round caps at both ends.
-            painter.circle_filled(pts[0], radius, color);
-            painter.circle_filled(pts[n - 1], radius, color);
-
-            // Round joins only at sharp corners (dot product of the two segments below 0.8).
-            for w in pts.windows(3) {
-                let a = w[1] - w[0];
-                let b = w[2] - w[1];
-                let (la, lb) = (a.length(), b.length());
-                if la > 0.0 && lb > 0.0 && a.dot(b) / (la * lb) < 0.8 {
-                    painter.circle_filled(w[1], radius, color);
-                }
+        _ => {
+            let stroke = Stroke::new(line.width, color);
+            for pair in pts.windows(2) {
+                painter.line_segment([pair[0], pair[1]], stroke);
+            }
+            // A disc at every point rounds each joint, whatever the angle.
+            for p in pts {
+                painter.circle_filled(*p, radius, color);
             }
         }
     }

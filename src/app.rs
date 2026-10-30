@@ -32,6 +32,8 @@ pub struct Painty {
     updater: Updater,
     /// True once the automatic update check has been started.
     update_checked: bool,
+    /// True once the window has been centered on the monitor.
+    centered: bool,
 }
 
 impl Painty {
@@ -60,6 +62,7 @@ impl Painty {
             export_error: None,
             updater: Updater::default(),
             update_checked: false,
+            centered: false,
         }
     }
 
@@ -103,6 +106,19 @@ impl Painty {
 
 impl eframe::App for Painty {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Center the window once, at a reasonable size (at most 900x600, 70 % of the screen).
+        if !self.centered {
+            let monitor = ctx.input(|i| i.viewport().monitor_size);
+            if let Some(monitor) = monitor {
+                let size = egui::vec2(900.0, 600.0).min(monitor * 0.7);
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(
+                    ((monitor - size) * 0.5).to_pos2(),
+                ));
+                self.centered = true;
+            }
+        }
+
         // Silent update check on the first frame. Errors are not shown.
         if !self.update_checked {
             self.update_checked = true;

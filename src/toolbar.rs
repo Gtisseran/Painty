@@ -58,7 +58,7 @@ pub fn show(ctx: &Context, brush: &mut Brush, c: &Colors) -> Option<Action> {
                     ui.spacing_mut().interact_size = vec2(28.0, 28.0);
                     ui.spacing_mut().slider_width = slider_w;
 
-                    ui.horizontal(|ui| {
+                    ui.horizontal_centered(|ui| {
                         // Colors
                         for (i, color) in theme::palette(c.ink).iter().enumerate() {
                             let selected = brush.tool == Tool::Brush && brush.color == *color;
