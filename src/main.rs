@@ -13,6 +13,7 @@ mod theme;
 mod toolbar;
 mod widgets;
 mod updater;
+mod export;
 
 use eframe::egui;
 

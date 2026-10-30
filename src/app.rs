@@ -1,8 +1,9 @@
-use eframe::egui::{self, Color32, Frame, RichText};
+use eframe::egui::{self, Color32, Frame, Key, RichText};
 
 use crate::canvas::Canvas;
 use crate::config;
 use crate::dialog;
+use crate::export;
 use crate::model::Brush;
 use crate::settings;
 use crate::theme::Mode;
@@ -22,6 +23,8 @@ pub struct Painty {
     last_saved: (Mode, bool),
     settings_open: bool,
     confirm_clear: bool,
+    /// Message of the last failed export, shown in a dialog.
+    export_error: Option<String>,
     updater: Updater,
     /// True once the automatic update check has been started.
     update_checked: bool,
@@ -30,7 +33,7 @@ pub struct Painty {
 impl Painty {
     /// Loads the saved settings and builds the initial state.
     pub fn new() -> Self {
-        // Remove the executable left over from the previous update.
+        // Remove files left over from the previous update.
         updater::cleanup();
 
         let cfg = config::load();
@@ -48,8 +51,41 @@ impl Painty {
             last_saved: (cfg.mode, cfg.canvas_follows_theme),
             settings_open: false,
             confirm_clear: false,
+            export_error: None,
             updater: Updater::default(),
             update_checked: false,
+        }
+    }
+
+    /// Asks where to save, then writes the drawing as a PNG.
+    fn export(&mut self, ctx: &egui::Context, bg: Color32) {
+        let Some(rect) = self.canvas.rect() else {
+            return;
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("PNG image", &["png"])
+            .set_file_name("painty.png")
+            .save_file()
+        else {
+            // Dialog cancelled.
+            return;
+        };
+        // Add the extension if the user typed a name without one.
+        let path = if path.extension().is_none() {
+            path.with_extension("png")
+        } else {
+            path
+        };
+
+        if let Err(error) = export::save_png(
+            &path,
+            self.canvas.lines(),
+            rect.min,
+            rect.size(),
+            bg,
+            ctx.pixels_per_point(),
+        ) {
+            self.export_error = Some(error);
         }
     }
 }
@@ -73,15 +109,31 @@ impl eframe::App for Painty {
         }
         self.last_ink = Some(c.ink);
 
-        // Ctrl+Z undoes the last stroke, unless a dialog is open.
-        let modal_open = self.settings_open || self.confirm_clear;
-        if !modal_open && ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z)) {
-            self.canvas.undo();
+        // Keyboard shortcuts, unless a dialog is open.
+        let modal_open = self.settings_open || self.confirm_clear || self.export_error.is_some();
+        if !modal_open {
+            let (cmd, undo, redo, save) = ctx.input(|i| {
+                (
+                    i.modifiers.command,
+                    i.key_pressed(Key::Z),
+                    i.key_pressed(Key::Y),
+                    i.key_pressed(Key::S),
+                )
+            });
+            if cmd && undo {
+                self.canvas.undo();
+            }
+            if cmd && redo {
+                self.canvas.redo();
+            }
+            if cmd && save {
+                self.export(ctx, c.canvas_bg);
+            }
         }
 
         egui::CentralPanel::default()
             .frame(Frame::none().fill(c.canvas_bg))
-            .show(ctx, |ui| self.canvas.show(ui, &self.brush, c.canvas_bg));
+            .show(ctx, |ui| self.canvas.show(ui, &self.brush, c.text_dim));
 
         match toolbar::show(ctx, &mut self.brush, &c) {
             Some(Action::Undo) => self.canvas.undo(),
@@ -92,6 +144,7 @@ impl eframe::App for Painty {
                 }
             }
             Some(Action::Settings) => self.settings_open = !self.settings_open,
+            Some(Action::Export) => self.export(ctx, c.canvas_bg),
             None => {}
         }
 
@@ -136,46 +189,87 @@ impl eframe::App for Painty {
             self.confirm_clear = false;
         }
 
-        // Update prompt: shown only when a new version is available,
-        // is being installed, or failed to install.
-        let status = self.updater.status.clone();
-        let prompt_open = matches!(
-            status,
-            Status::Available(_) | Status::Downloading | Status::InstallFailed(_)
-        );
-        let mut install = false;
-        let mut later = false;
-        let dismissed_update = dialog::show(ctx, "update", prompt_open, &c, 300.0, |ui| match &status {
-            Status::Available(release) => {
-                ui.label(RichText::new("Update available").size(18.0).strong());
-                ui.add_space(6.0);
-                ui.label(
-                    RichText::new(format!("Painty {} is ready to install.", release.version))
-                        .color(c.text_dim),
-                );
-                ui.add_space(16.0);
-                ui.horizontal(|ui| {
-                    if widgets::button(ui, "later", &c, "Later", Kind::Soft, 146.0).clicked() {
-                        later = true;
-                    }
-                    if widgets::button(ui, "install", &c, "Install", Kind::Soft, 146.0).clicked() {
-                        install = true;
-                    }
-                });
-            }
-            Status::Downloading => {
-                ui.label(RichText::new("Downloading update…").size(18.0).strong());
-            }
-            Status::InstallFailed(error) => {
-                ui.label(RichText::new("Update failed").size(18.0).strong());
+        // Export error dialog.
+        let error = self.export_error.clone().unwrap_or_default();
+        let mut error_close = false;
+        let error_dismissed = dialog::show(
+            ctx,
+            "export_error",
+            self.export_error.is_some(),
+            &c,
+            300.0,
+            |ui| {
+                ui.label(RichText::new("Export failed").size(18.0).strong());
                 ui.add_space(6.0);
                 ui.label(RichText::new(error.as_str()).color(c.text_dim));
                 ui.add_space(16.0);
-                if widgets::button(ui, "update_close", &c, "Close", Kind::Soft, 300.0).clicked() {
-                    later = true;
+                if widgets::button(ui, "export_error_close", &c, "Close", Kind::Soft, 300.0)
+                    .clicked()
+                {
+                    error_close = true;
                 }
+            },
+        );
+        if error_close || error_dismissed {
+            self.export_error = None;
+        }
+
+        // Update prompt: shown when a new version is available, while it downloads,
+        // or when the install failed.
+        let status = self.updater.status.clone();
+        let prompt_open = matches!(
+            status,
+            Status::Available(_) | Status::Downloading(_) | Status::InstallFailed(_)
+        );
+        let mut install = false;
+        let mut later = false;
+        let dismissed_update = dialog::show(ctx, "update", prompt_open, &c, 300.0, |ui| {
+            match &status {
+                Status::Available(release) => {
+                    ui.label(RichText::new("Update available").size(18.0).strong());
+                    ui.add_space(6.0);
+                    ui.label(
+                        RichText::new(format!("Painty {} is ready to install.", release.version))
+                            .color(c.text_dim),
+                    );
+                    ui.add_space(16.0);
+                    ui.horizontal(|ui| {
+                        if widgets::button(ui, "later", &c, "Later", Kind::Soft, 146.0).clicked() {
+                            later = true;
+                        }
+                        if widgets::button(ui, "install", &c, "Install", Kind::Soft, 146.0)
+                            .clicked()
+                        {
+                            install = true;
+                        }
+                    });
+                }
+                Status::Downloading(progress) => {
+                    ui.label(RichText::new("Downloading update…").size(18.0).strong());
+                    ui.add_space(12.0);
+                    let fraction = progress.fraction();
+                    // Indeterminate (animated) bar when the size is unknown.
+                    let mut bar = egui::ProgressBar::new(fraction.unwrap_or(0.0))
+                        .desired_width(300.0)
+                        .animate(fraction.is_none());
+                    if fraction.is_some() {
+                        bar = bar.show_percentage();
+                    }
+                    ui.add(bar);
+                }
+                Status::InstallFailed(error) => {
+                    ui.label(RichText::new("Update failed").size(18.0).strong());
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(error.as_str()).color(c.text_dim));
+                    ui.add_space(16.0);
+                    if widgets::button(ui, "update_close", &c, "Close", Kind::Soft, 300.0)
+                        .clicked()
+                    {
+                        later = true;
+                    }
+                }
+                _ => {}
             }
-            _ => {}
         });
 
         if install {
@@ -184,7 +278,7 @@ impl eframe::App for Painty {
             }
         }
         // The prompt cannot be closed while the download is running.
-        if later || (dismissed_update && !matches!(self.updater.status, Status::Downloading)) {
+        if later || (dismissed_update && !matches!(self.updater.status, Status::Downloading(_))) {
             self.updater.dismiss();
         }
     }

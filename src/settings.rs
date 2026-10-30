@@ -56,13 +56,16 @@ pub fn show(
 
         ui.label(RichText::new("Updates").color(c.text_dim));
         ui.add_space(4.0);
-        let busy = matches!(updater.status, Status::Checking | Status::Downloading);
+        let busy = matches!(updater.status, Status::Checking | Status::Downloading(_));
         let text = match &updater.status {
             Status::Idle => String::new(),
             Status::Checking => "Checking for updates…".to_owned(),
             Status::UpToDate => "You have the latest version.".to_owned(),
             Status::Available(release) => format!("Version {} is available.", release.version),
-            Status::Downloading => "Downloading update…".to_owned(),
+            Status::Downloading(progress) => match progress.fraction() {
+                Some(f) => format!("Downloading update… {:.0}%", f * 100.0),
+                None => "Downloading update…".to_owned(),
+            },
             Status::CheckFailed(error) => format!("Could not check for updates: {error}"),
             Status::InstallFailed(error) => format!("Update failed: {error}"),
         };

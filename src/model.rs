@@ -9,26 +9,36 @@ pub enum Tool {
     Eraser,
 }
 
-/// One stroke: a list of points plus how it should be drawn.
+/// One stroke: a list of points plus its color and width.
 pub struct Line {
     pub points: Vec<Pos2>,
     pub color: Color32,
     pub width: f32,
-    /// True for eraser strokes, which are painted with the background color.
-    pub erase: bool,
     /// Area covered by the stroke, used to skip drawing when off screen.
     pub bounds: Rect,
 }
 
 impl Line {
-    pub fn new(color: Color32, width: f32, erase: bool) -> Self {
+    /// Creates an empty stroke.
+    pub fn new(color: Color32, width: f32) -> Self {
         Self {
             points: Vec::new(),
             color,
             width,
-            erase,
             bounds: Rect::NOTHING,
         }
+    }
+
+    /// Creates a stroke from existing points, used when the eraser splits a stroke.
+    pub fn from_points(color: Color32, width: f32, points: Vec<Pos2>) -> Self {
+        let mut line = Self {
+            points,
+            color,
+            width,
+            bounds: Rect::NOTHING,
+        };
+        line.finish();
+        line
     }
 
     /// Adds a point, skipping points too close to the previous one.

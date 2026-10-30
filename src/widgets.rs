@@ -21,6 +21,7 @@ pub enum Kind {
 pub enum Icon {
     Undo,
     Trash,
+    Export,
 }
 
 /// Shows a hand cursor over interactive elements.
@@ -132,6 +133,8 @@ pub fn icon_button(ui: &mut Ui, id: &str, c: &Colors, icon: Icon, tip: &str, vis
         (Icon::Undo, true) => Image::new(egui::include_image!("../assets/undo_light.svg")),
         (Icon::Trash, false) => Image::new(egui::include_image!("../assets/trash_dark.svg")),
         (Icon::Trash, true) => Image::new(egui::include_image!("../assets/trash_light.svg")),
+        (Icon::Export, false) => Image::new(egui::include_image!("../assets/export_dark.svg")),
+        (Icon::Export, true) => Image::new(egui::include_image!("../assets/export_light.svg")),
     };
     image.tint(tint).paint_at(ui, icon_rect);
 

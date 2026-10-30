@@ -1,43 +1,68 @@
-# Painty
+<p align="center">
+  <img src="assets/icon.png" width="128" alt="Painty logo">
+</p>
 
-A minimal paint application written in Rust with [egui](https://github.com/emilk/egui) and eframe.
+<h1 align="center">Painty</h1>
+
+<p align="center">
+  A minimal paint app for Windows, written in Rust with egui.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Gtisseran/painty/releases/latest"><b>Download</b></a>
+  ·
+  <a href="ARCHITECTURE.md">Architecture</a>
+  ·
+  <a href="LICENSE">MIT License</a>
+</p>
+
+---
 
 ## Features
 
-- Freehand brush with adjustable size and color
-- Eraser
-- Undo (toolbar button or Ctrl+Z)
-- Clear all, with confirmation
-- Light and dark theme
-- Canvas background that either stays white or follows the theme
-- Settings saved between sessions
-- Responsive toolbar that adapts smoothly to the window width
-- Automatic update check at startup, and a manual check in Settings
+- **Brush** with adjustable size and color, and a color picker
+- **Smooth strokes** that follow the pointer without jitter
+- **Eraser** that cuts through existing strokes
+- **Undo and redo** (Ctrl+Z / Ctrl+Y)
+- **Export to PNG** (Ctrl+S)
+- **Clear all**, with confirmation
+- **Light and dark theme**, with a white or theme-coloured canvas
+- **Responsive toolbar** that adapts smoothly to the window width
+- **Automatic updates** from GitHub Releases, with a progress bar
+- **Settings saved** between sessions
 
-## Download
+## Install
 
-Get the latest installer from the [Releases](https://github.com/Gtisseran/painty/releases) page: `PaintySetup-x.y.z.exe`.
+1. Go to the [latest release](https://github.com/Gtisseran/painty/releases/latest).
+2. Download `PaintySetup-x.y.z.exe` and run it.
+3. Choose where to install. No administrator rights are needed.
 
-## Requirements (to build)
+Painty checks for updates when it starts. You can also check from **Settings → Updates**.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+Z | Undo |
+| Ctrl+Y | Redo |
+| Ctrl+S | Export as PNG |
+
+## Build from source
+
+Requirements:
 
 - Windows 10 or 11
-- Rust (stable), installed with [rustup](https://rustup.rs)
-- Visual Studio Build Tools with the C++ workload (MSVC linker)
+- [Rust](https://rustup.rs) (stable)
+- Visual Studio Build Tools with the **C++ workload** (MSVC linker)
 - [Inno Setup 6](https://jrsoftware.org/isinfo.php), only to build the installer
 
-## Run
+Run the app:
 
 ```powershell
 .\run.ps1
 ```
 
-Or directly:
-
-```powershell
-cargo run
-```
-
-## Build the installer
+Build the executable and the installer:
 
 ```powershell
 cargo build --release
@@ -48,18 +73,12 @@ The installer is written to `dist\PaintySetup-<version>.exe`.
 
 ## Updates
 
-On startup, Painty checks GitHub Releases in the background. If a newer version exists, it asks whether to install it. Only `painty.exe` is downloaded and replaces the running executable. No installer is run.
-
-The check can also be started manually from Settings → Updates.
-
-## Project layout
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for a description of each file.
+Painty downloads only `painty.exe` from the latest GitHub release and replaces itself. No installer is run, and the new version starts right after the download.
 
 ## Settings
 
 Settings are stored in `%APPDATA%\Painty\settings.txt`.
 
-## License
+## Project structure
 
-MIT. See [LICENSE](LICENSE).
+See [ARCHITECTURE.md](ARCHITECTURE.md) for a full description of each file.

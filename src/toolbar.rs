@@ -9,6 +9,7 @@ pub enum Action {
     Undo,
     Clear,
     Settings,
+    Export,
 }
 
 /// Smooth start and end for animations (0.0 -> 1.0).
@@ -112,6 +113,10 @@ pub fn show(ctx: &Context, brush: &mut Brush, c: &Colors) -> Option<Action> {
                             .clicked()
                         {
                             action = Some(Action::Clear);
+                        }
+
+                        if widgets::icon_button(ui, "export", c, Icon::Export, "Export PNG (Ctrl+S)", 1.0).clicked() {
+                            action = Some(Action::Export);
                         }
 
                         if widgets::settings_button(ui, c).clicked() {
