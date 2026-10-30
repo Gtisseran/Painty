@@ -6,7 +6,8 @@ use crate::model::{Brush, Line, Tool};
 
 /// Maximum number of undo steps kept in memory.
 const HISTORY_LIMIT: usize = 100;
-/// How much the drawn point lags behind the pointer, from 0.0 (none) to 1.0 (very smooth).
+/// Fraction of the remaining distance to the pointer kept per frame at 60 fps.
+/// Smoothing is time-based, so strokes feel the same at any refresh rate.
 /// Lower it for a more direct feel, raise it for smoother strokes.
 const SMOOTHING: f32 = 0.6;
 /// Eraser step, as a fraction of the eraser radius. Smaller = no gaps, slower.
@@ -84,11 +85,13 @@ impl Canvas {
         self.rect = Some(response.rect);
         let radius = brush.width / 2.0;
         let erasing = brush.tool == Tool::Eraser;
+        // Frame duration, capped so a stalled frame does not make the stroke jump.
+        let dt = ui.input(|i| i.stable_dt).clamp(1.0 / 1000.0, 0.1);
 
         if erasing {
-            self.handle_eraser(&response, radius);
+            self.handle_eraser(&response, radius, dt);
         } else {
-            self.handle_brush(&response, brush);
+            self.handle_brush(&response, brush, dt);
         }
 
         // Only strokes that touch the visible area are drawn.
@@ -111,9 +114,12 @@ impl Canvas {
     }
 
     /// Moves the smoothed position toward the pointer and returns it.
-    fn smooth(&mut self, target: Pos2) -> Pos2 {
+    /// `dt` is the frame duration in seconds; the factor is normalized to 60 fps
+    /// so the stroke behaves the same at any refresh rate.
+    fn smooth(&mut self, target: Pos2, dt: f32) -> Pos2 {
+        let kept = SMOOTHING.powf(dt * 60.0);
         let next = match self.smooth_pos {
-            Some(prev) => prev + (target - prev) * (1.0 - SMOOTHING),
+            Some(prev) => prev + (target - prev) * (1.0 - kept),
             None => target,
         };
         self.smooth_pos = Some(next);
@@ -136,7 +142,7 @@ impl Canvas {
     }
 
     /// Brush: draws a smooth stroke while dragging, or a single dot on click.
-    fn handle_brush(&mut self, response: &Response, brush: &Brush) {
+    fn handle_brush(&mut self, response: &Response, brush: &Brush, dt: f32) {
         if response.drag_started() {
             self.current = Some(Line::new(brush.color, brush.width));
             self.smooth_pos = response.interact_pointer_pos();
@@ -144,7 +150,7 @@ impl Canvas {
 
         if response.dragged() {
             if let Some(target) = response.interact_pointer_pos() {
-                let p = self.smooth(target);
+                let p = self.smooth(target, dt);
                 if let Some(line) = self.current.as_mut() {
                     line.push(p);
                 }
@@ -153,8 +159,8 @@ impl Canvas {
 
         if response.drag_stopped() {
             if let Some(mut line) = self.current.take() {
-                // Finish exactly where the stroke was heading, so it does not stop short.
-                if let Some(end) = self.smooth_pos {
+                // Finish at the actual pointer, not the lagging smoothed point.
+                if let Some(end) = response.interact_pointer_pos() {
                     line.push(end);
                 }
                 if !line.points.is_empty() {
@@ -177,7 +183,7 @@ impl Canvas {
     }
 
     /// Eraser: removes the parts of existing strokes under the pointer, with smoothing.
-    fn handle_eraser(&mut self, response: &Response, radius: f32) {
+    fn handle_eraser(&mut self, response: &Response, radius: f32, dt: f32) {
         if response.drag_started() || response.clicked() {
             self.last_erase = None;
             self.smooth_pos = response.interact_pointer_pos();
@@ -186,7 +192,7 @@ impl Canvas {
 
         if response.dragged() {
             if let Some(target) = response.interact_pointer_pos() {
-                let p = self.smooth(target);
+                let p = self.smooth(target, dt);
                 let from = self.last_erase.unwrap_or(p);
                 self.erase_between(from, p, radius);
                 self.last_erase = Some(p);
@@ -200,6 +206,11 @@ impl Canvas {
         }
 
         if response.drag_stopped() {
+            // Catch up to the actual release point: the smoothed point lags behind it.
+            if let Some(pos) = response.interact_pointer_pos() {
+                let from = self.last_erase.unwrap_or(pos);
+                self.erase_between(from, pos, radius);
+            }
             self.last_erase = None;
             self.smooth_pos = None;
             self.eraser_changed = false;
@@ -337,5 +348,22 @@ mod tests {
 
         assert!(canvas.is_empty());
         assert_eq!(canvas.undo.len(), steps + 1);
+    }
+
+    #[test]
+    fn smoothing_is_frame_rate_independent() {
+        fn advance(frames: u32, dt: f32) -> f32 {
+            let mut canvas = Canvas::default();
+            canvas.smooth_pos = Some(pos2(0.0, 0.0));
+            for _ in 0..frames {
+                canvas.smooth(pos2(100.0, 0.0), dt);
+            }
+            canvas.smooth_pos.unwrap().x
+        }
+
+        // Same duration (0.1 s) at 30 fps and at 120 fps.
+        let slow = advance(3, 1.0 / 30.0);
+        let fast = advance(12, 1.0 / 120.0);
+        assert!((slow - fast).abs() < 0.01, "{slow} vs {fast}");
     }
 }
