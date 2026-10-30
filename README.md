@@ -62,4 +62,4 @@ Settings are stored in `%APPDATA%\Painty\settings.txt`.
 
 ## License
 
-All rights reserved.
+MIT. See [LICENSE](LICENSE).

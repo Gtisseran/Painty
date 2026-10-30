@@ -5,7 +5,12 @@ use crate::theme::{Colors, Mode};
 use crate::updater::{Status, Updater};
 use crate::widgets::{self, Kind};
 
-/// Settings dialog: theme, canvas background, updates and About section.
+/// Preferred width of the settings popup. It shrinks when the window is narrower.
+const WIDTH: f32 = 360.0;
+/// Padding around the segments, as drawn by `widgets::segmented`.
+const SEG_PADDING: f32 = 3.0;
+
+/// Settings dialog: theme, canvas background, updates and a short About line.
 pub fn show(
     ctx: &Context,
     open: &mut bool,
@@ -16,36 +21,41 @@ pub fn show(
 ) {
     let mut close = false;
 
-    let dismissed = dialog::show(ctx, "settings", *open, c, 380.0, |ui| {
+    let dismissed = dialog::show(ctx, "settings", *open, c, WIDTH, |ui| {
+        // Width the dialog can actually give us: it shrinks with the window.
+        let width = ui.available_width();
+        // Both segments share that width, minus the padding around them.
+        let seg_w = ((width - 2.0 * SEG_PADDING) / 2.0).max(1.0);
+
         ui.label(RichText::new("Settings").size(18.0).strong());
-        ui.add_space(16.0);
+        ui.add_space(12.0);
 
         ui.label(RichText::new("Appearance").color(c.text_dim));
-        ui.add_space(6.0);
+        ui.add_space(4.0);
         widgets::segmented(
             ui,
             "theme",
             c,
             mode,
             &[(Mode::Light, "Light"), (Mode::Dark, "Dark")],
-            147.0,
+            seg_w,
         );
-        ui.add_space(12.0);
+        ui.add_space(10.0);
 
         ui.label(RichText::new("Canvas").color(c.text_dim));
-        ui.add_space(6.0);
+        ui.add_space(4.0);
         widgets::segmented(
             ui,
             "canvas_follow",
             c,
             canvas_follows_theme,
             &[(false, "White"), (true, "Follow theme")],
-            147.0,
+            seg_w,
         );
-        ui.add_space(16.0);
+        ui.add_space(10.0);
 
         ui.label(RichText::new("Updates").color(c.text_dim));
-        ui.add_space(6.0);
+        ui.add_space(4.0);
         let busy = matches!(updater.status, Status::Checking | Status::Downloading);
         let text = match &updater.status {
             Status::Idle => String::new(),
@@ -58,24 +68,24 @@ pub fn show(
         };
         if !text.is_empty() {
             ui.label(RichText::new(text).color(c.text_dim).size(13.0));
-            ui.add_space(6.0);
+            ui.add_space(4.0);
         }
         if !busy
-            && widgets::button(ui, "check_updates", c, "Check for updates", Kind::Soft, 300.0)
+            && widgets::button(ui, "check_updates", c, "Check for updates", Kind::Soft, width)
                 .clicked()
         {
             updater.check(ctx, true);
         }
-        ui.add_space(16.0);
+        ui.add_space(14.0);
 
-        ui.label(RichText::new("About").color(c.text_dim));
-        ui.add_space(4.0);
-        ui.label(RichText::new("Painty").strong());
-        ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
-        ui.label("Minimal paint app written in Rust with egui.");
-        ui.add_space(16.0);
+        ui.label(
+            RichText::new(format!("Painty {} · MIT License", env!("CARGO_PKG_VERSION")))
+                .color(c.text_dim)
+                .size(13.0),
+        );
+        ui.add_space(10.0);
 
-        if widgets::button(ui, "settings_close", c, "Close", Kind::Soft, 300.0).clicked() {
+        if widgets::button(ui, "settings_close", c, "Close", Kind::Soft, width).clicked() {
             close = true;
         }
     });
