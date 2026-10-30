@@ -70,7 +70,7 @@ Icons are loaded with `egui::include_image!`, so they are embedded in the execut
 
 ## Export
 
-`export.rs` creates an RGBA image buffer filled with the canvas background, renders each stroke as rounded segments and saves the result using the `image` crate.
+`export.rs` creates an RGBA image buffer filled with the canvas background, renders each stroke as rounded segments and saves the result using the `image` crate. The image covers the bounding box of every stroke, with a small margin, so resizing the window does not cut the drawing.
 
 The exported image uses the screen's pixel density (`pixels_per_point`) to maintain visual sharpness.
 

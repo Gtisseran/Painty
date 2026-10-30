@@ -24,7 +24,7 @@
 - **Smooth strokes** that follow the pointer without jitter
 - **Eraser** that cuts through existing strokes
 - **Undo and redo** (Ctrl+Z / Ctrl+Y)
-- **Export to PNG** (Ctrl+S)
+- **Export the whole drawing to PNG** (Ctrl+S)
 - **Clear all**, with confirmation
 - **Light and dark theme**, with a white or theme-coloured canvas
 - **Responsive toolbar** that adapts smoothly to the window width

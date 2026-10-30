@@ -3,9 +3,26 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use eframe::egui::{vec2, Color32, Pos2, Vec2};
+use eframe::egui::{vec2, Color32, Pos2, Rect, Vec2};
 
 use crate::model::Line;
+
+/// Margin kept around the drawing in the exported image, in points.
+const MARGIN: f32 = 8.0;
+
+/// Bounding box of all strokes, with a margin, in screen points.
+/// Returns `None` when there is nothing to export.
+pub fn bounds(lines: &[Arc<Line>]) -> Option<Rect> {
+    let mut bounds = Rect::NOTHING;
+    for line in lines {
+        bounds = bounds.union(line.bounds);
+    }
+    if bounds.is_positive() {
+        Some(bounds.expand(MARGIN))
+    } else {
+        None
+    }
+}
 
 /// Writes the drawing to `path` as a PNG.
 /// `origin` is the top-left corner of the drawing area and `size` its size, both in points.
@@ -96,5 +113,30 @@ impl Raster<'_> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eframe::egui::pos2;
+
+    fn stroke(points: &[Pos2]) -> Arc<Line> {
+        Arc::new(Line::from_points(Color32::BLACK, 4.0, points.to_vec()))
+    }
+
+    #[test]
+    fn bounds_cover_every_stroke() {
+        let lines = vec![
+            stroke(&[pos2(10.0, 10.0)]),
+            stroke(&[pos2(100.0, 50.0), pos2(200.0, 80.0)]),
+        ];
+        let expected = lines[0].bounds.union(lines[1].bounds).expand(MARGIN);
+        assert_eq!(bounds(&lines), Some(expected));
+    }
+
+    #[test]
+    fn empty_drawing_has_no_bounds() {
+        assert_eq!(bounds(&[]), None);
     }
 }

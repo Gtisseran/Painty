@@ -62,6 +62,11 @@ impl Painty {
         let Some(rect) = self.canvas.rect() else {
             return;
         };
+        // Export the whole drawing, even when it no longer fits in the window.
+        // An empty canvas falls back to the visible area.
+        let (origin, size) = export::bounds(self.canvas.lines())
+            .map(|bounds| (bounds.min, bounds.size()))
+            .unwrap_or((rect.min, rect.size()));
         let Some(path) = rfd::FileDialog::new()
             .add_filter("PNG image", &["png"])
             .set_file_name("painty.png")
@@ -80,8 +85,8 @@ impl Painty {
         if let Err(error) = export::save_png(
             &path,
             self.canvas.lines(),
-            rect.min,
-            rect.size(),
+            origin,
+            size,
             bg,
             ctx.pixels_per_point(),
         ) {
