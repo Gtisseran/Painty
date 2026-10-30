@@ -81,13 +81,25 @@ pub fn show(
                     // The popup is exactly as wide as its content, which never exceeds the window.
                     ui.set_width(width);
                     // Scrolls only when the window is too short for the content.
-                    ScrollArea::vertical()
+                    let output = ScrollArea::vertical()
                         .id_salt(("dialog_scroll", id, size_key))
                         .max_height(max_content_h)
                         .auto_shrink([false, true])
                         .show(ui, |ui| {
                             content(ui);
                         });
+
+                    // The scroll area sizes itself from the content measured on the previous
+                    // frame. When that height changes (e.g. a status line appears or a button
+                    // is replaced), ask for another frame so the popup is laid out again
+                    // instead of staying clipped until the next mouse movement.
+                    let content_h = output.content_size.y;
+                    let key = Id::new(("dialog_content_h", id));
+                    let previous = ctx.data(|d| d.get_temp::<f32>(key));
+                    if previous != Some(content_h) {
+                        ctx.data_mut(|d| d.insert_temp(key, content_h));
+                        ctx.request_repaint();
+                    }
                 });
         });
 

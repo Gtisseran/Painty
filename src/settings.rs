@@ -1,4 +1,4 @@
-use eframe::egui::{Context, RichText};
+use eframe::egui::{self, Context, RichText};
 
 use crate::dialog;
 use crate::theme::{Colors, Mode};
@@ -9,6 +9,8 @@ use crate::widgets::{self, Kind};
 const WIDTH: f32 = 360.0;
 /// Padding around the segments, as drawn by `widgets::segmented`.
 const SEG_PADDING: f32 = 3.0;
+/// Height of the update status line. Reserved even when empty, so the popup never changes height.
+const STATUS_H: f32 = 18.0;
 
 /// Settings dialog: theme, canvas background, updates and a short About line.
 pub fn show(
@@ -69,14 +71,22 @@ pub fn show(
             Status::CheckFailed(error) => format!("Could not check for updates: {error}"),
             Status::InstallFailed(error) => format!("Update failed: {error}"),
         };
-        if !text.is_empty() {
-            ui.label(RichText::new(text).color(c.text_dim).size(13.0));
-            ui.add_space(4.0);
-        }
-        if !busy
-            && widgets::button(ui, "check_updates", c, "Check for updates", Kind::Soft, width)
-                .clicked()
-        {
+        // Always reserves the same height, whatever the text.
+        ui.add_sized(
+            [width, STATUS_H],
+            egui::Label::new(RichText::new(text).color(c.text_dim).size(13.0)),
+        );
+        ui.add_space(4.0);
+
+        // The button is always drawn, only disabled while busy: its disappearance
+        // used to shrink the popup and clip the rest of it.
+        let check = ui
+            .add_enabled_ui(!busy, |ui| {
+                widgets::button(ui, "check_updates", c, "Check for updates", Kind::Soft, width)
+                    .clicked()
+            })
+            .inner;
+        if check {
             updater.check(ctx, true);
         }
         ui.add_space(14.0);
