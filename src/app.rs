@@ -260,6 +260,7 @@ impl eframe::App for Painty {
         // Update prompt: shown when a new version is available, while it downloads,
         // or when the install failed. It never stacks over another dialog: wait
         // until the others have fully faded out.
+        let has_drawing = !self.canvas.is_empty();
         let other_dialog_visible = self.confirm_exit
             || dialog::is_visible(ctx, "settings")
             || dialog::is_visible(ctx, "confirm_clear")
@@ -277,12 +278,23 @@ impl eframe::App for Painty {
                         RichText::new(format!("Painty {} is ready to install.", release.version))
                             .color(c.text_dim),
                     );
+                    if has_drawing {
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new(
+                                "Your current drawing will be lost when Painty restarts.",
+                            )
+                            .color(c.danger)
+                            .size(13.0),
+                        );
+                    }
                     ui.add_space(16.0);
                     ui.horizontal(|ui| {
                         if widgets::button(ui, "later", &c, "Later", Kind::Soft, 146.0).clicked() {
                             later = true;
                         }
-                        if widgets::button(ui, "install", &c, "Install", Kind::Soft, 146.0)
+                        let install_label = if has_drawing { "Install anyway" } else { "Install" };
+                        if widgets::button(ui, "install", &c, install_label, Kind::Soft, 146.0)
                             .clicked()
                         {
                             install = true;
