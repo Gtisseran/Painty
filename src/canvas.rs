@@ -26,6 +26,9 @@ pub struct Canvas {
     smooth_pos: Option<Pos2>,
     /// Last erased position during a drag, so fast drags leave no gaps.
     last_erase: Option<Pos2>,
+    /// True once the current eraser gesture has modified the drawing, so the
+    /// gesture creates at most one undo step.
+    eraser_changed: bool,
     /// Area of the drawing area on screen, used when exporting.
     rect: Option<Rect>,
 }
@@ -36,6 +39,7 @@ impl Canvas {
         if let Some(previous) = self.undo.pop() {
             let current = std::mem::replace(&mut self.lines, previous);
             self.redo.push(current);
+            self.eraser_changed = false;
         }
     }
 
@@ -44,6 +48,7 @@ impl Canvas {
         if let Some(next) = self.redo.pop() {
             let current = std::mem::replace(&mut self.lines, next);
             self.undo.push(current);
+            self.eraser_changed = false;
         }
     }
 
@@ -55,6 +60,7 @@ impl Canvas {
         self.redo.clear();
         self.smooth_pos = None;
         self.last_erase = None;
+        self.eraser_changed = false;
     }
 
     pub fn is_empty(&self) -> bool {
@@ -173,9 +179,9 @@ impl Canvas {
     /// Eraser: removes the parts of existing strokes under the pointer, with smoothing.
     fn handle_eraser(&mut self, response: &Response, radius: f32) {
         if response.drag_started() || response.clicked() {
-            self.checkpoint();
             self.last_erase = None;
             self.smooth_pos = response.interact_pointer_pos();
+            self.eraser_changed = false;
         }
 
         if response.dragged() {
@@ -196,6 +202,7 @@ impl Canvas {
         if response.drag_stopped() {
             self.last_erase = None;
             self.smooth_pos = None;
+            self.eraser_changed = false;
         }
     }
 
@@ -251,6 +258,12 @@ impl Canvas {
         }
 
         if changed {
+            // Save the state before the first actual change of this gesture, so a
+            // click or drag in empty space adds no undo step and keeps redo.
+            if !self.eraser_changed {
+                self.checkpoint();
+                self.eraser_changed = true;
+            }
             self.lines = next;
         }
     }
@@ -285,5 +298,44 @@ fn draw_line(painter: &Painter, line: &Line) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eframe::egui::pos2;
+
+    fn dot(at: Pos2) -> Line {
+        let mut line = Line::new(Color32::BLACK, 4.0);
+        line.push(at);
+        line.finish();
+        line
+    }
+
+    #[test]
+    fn erasing_empty_space_keeps_redo() {
+        let mut canvas = Canvas::default();
+        canvas.commit(dot(pos2(10.0, 10.0)));
+        canvas.undo();
+        assert_eq!(canvas.redo.len(), 1);
+
+        canvas.erase_at(pos2(500.0, 500.0), 10.0);
+
+        assert!(canvas.undo.is_empty());
+        assert_eq!(canvas.redo.len(), 1);
+    }
+
+    #[test]
+    fn erasing_a_stroke_adds_one_undo_step() {
+        let mut canvas = Canvas::default();
+        canvas.commit(dot(pos2(10.0, 10.0)));
+        let steps = canvas.undo.len();
+
+        canvas.erase_at(pos2(10.0, 10.0), 5.0);
+        canvas.erase_at(pos2(10.0, 10.0), 5.0);
+
+        assert!(canvas.is_empty());
+        assert_eq!(canvas.undo.len(), steps + 1);
     }
 }
