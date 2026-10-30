@@ -16,7 +16,7 @@ pub enum Kind {
     Danger,
 }
 
-/// Icons loaded from assets/ (light and dark versions).
+/// Icons loaded from assets/svg (light and dark versions).
 #[derive(Clone, Copy)]
 pub enum Icon {
     Undo,
@@ -107,7 +107,7 @@ pub fn button_anim(
     resp
 }
 
-/// Square button with an icon from assets/ and a tooltip.
+/// Square button with an icon from assets/svg and a tooltip.
 /// Width and opacity follow `vis`.
 pub fn icon_button(ui: &mut Ui, id: &str, c: &Colors, icon: Icon, tip: &str, vis: f32) -> Response {
     let sense = if vis > 0.95 { Sense::click() } else { Sense::hover() };
@@ -129,12 +129,12 @@ pub fn icon_button(ui: &mut Ui, id: &str, c: &Colors, icon: Icon, tip: &str, vis
     let icon_rect = Rect::from_center_size(rect.center(), vec2(18.0, 18.0));
     let tint = Color32::from_white_alpha((vis * 255.0) as u8);
     let image = match (icon, c.dark) {
-        (Icon::Undo, false) => Image::new(egui::include_image!("../assets/undo_dark.svg")),
-        (Icon::Undo, true) => Image::new(egui::include_image!("../assets/undo_light.svg")),
-        (Icon::Trash, false) => Image::new(egui::include_image!("../assets/trash_dark.svg")),
-        (Icon::Trash, true) => Image::new(egui::include_image!("../assets/trash_light.svg")),
-        (Icon::Export, false) => Image::new(egui::include_image!("../assets/export_dark.svg")),
-        (Icon::Export, true) => Image::new(egui::include_image!("../assets/export_light.svg")),
+        (Icon::Undo, false) => Image::new(egui::include_image!("../assets/svg/undo_dark.svg")),
+        (Icon::Undo, true) => Image::new(egui::include_image!("../assets/svg/undo_light.svg")),
+        (Icon::Trash, false) => Image::new(egui::include_image!("../assets/svg/trash_dark.svg")),
+        (Icon::Trash, true) => Image::new(egui::include_image!("../assets/svg/trash_light.svg")),
+        (Icon::Export, false) => Image::new(egui::include_image!("../assets/svg/export_dark.svg")),
+        (Icon::Export, true) => Image::new(egui::include_image!("../assets/svg/export_light.svg")),
     };
     image.tint(tint).paint_at(ui, icon_rect);
 
@@ -290,9 +290,9 @@ pub fn settings_button(ui: &mut Ui, c: &Colors) -> Response {
     let icon_rect = Rect::from_center_size(rect.center(), vec2(18.0, 17.0));
     // Dark theme: white icon. Light theme: dark icon.
     let source = if c.dark {
-        egui::include_image!("../assets/settings_light.svg")
+        egui::include_image!("../assets/svg/settings_light.svg")
     } else {
-        egui::include_image!("../assets/settings_dark.svg")
+        egui::include_image!("../assets/svg/settings_dark.svg")
     };
     Image::new(source).paint_at(ui, icon_rect);
 

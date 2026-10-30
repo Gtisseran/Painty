@@ -12,6 +12,7 @@ use crate::updater::{self, Status, Updater};
 use crate::widgets::{self, Kind};
 
 /// Export options chosen in the export popup.
+#[derive(Clone)]
 struct ExportForm {
     name: String,
     format: Format,
@@ -26,6 +27,17 @@ impl Default for ExportForm {
     }
 }
 
+/// The single modal dialog shown at a time. `Update` stays status-driven (see `update`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Modal {
+    None,
+    Settings,
+    ClearConfirm,
+    Export,
+    Error,
+    Quit,
+}
+
 /// Main application state, updated every frame by egui.
 pub struct Painty {
     canvas: Canvas,
@@ -36,16 +48,14 @@ pub struct Painty {
     last_ink: Option<Color32>,
     /// Settings values as last written to disk, to avoid saving every frame.
     last_saved: (Mode, bool),
-    settings_open: bool,
-    confirm_clear: bool,
-    /// True while the "quit without saving?" confirmation is shown.
-    confirm_exit: bool,
+    /// The modal dialog currently requested.
+    modal: Modal,
+    /// Kept outside `Modal` so the dialog content can still be drawn while it fades out.
+    export_form: ExportForm,
+    /// Message shown by the error dialog, kept for the same reason.
+    error_text: String,
     /// True once the window may close without asking (user confirmed or update restart).
     close_confirmed: bool,
-    /// Message of the last failed export, shown in a dialog.
-    export_error: Option<String>,
-    /// Export popup, shown while the user chooses the name and format.
-    export_form: Option<ExportForm>,
     updater: Updater,
     /// True once the automatic update check has been started.
     update_checked: bool,
@@ -72,12 +82,10 @@ impl Painty {
             canvas_follows_theme: cfg.canvas_follows_theme,
             last_ink: Some(ink),
             last_saved: (cfg.mode, cfg.canvas_follows_theme),
-            settings_open: false,
-            confirm_clear: false,
-            confirm_exit: false,
+            modal: Modal::None,
+            export_form: ExportForm::default(),
+            error_text: String::new(),
             close_confirmed: false,
-            export_error: None,
-            export_form: None,
             updater: Updater::default(),
             update_checked: false,
             centered: false,
@@ -87,15 +95,15 @@ impl Painty {
     /// Opens the export popup, unless there is nothing to draw on yet.
     fn open_export(&mut self) {
         if self.canvas.rect().is_some() {
-            self.export_form = Some(ExportForm::default());
+            self.export_form = ExportForm::default();
+            self.modal = Modal::Export;
         }
     }
 
     /// Asks where to save, then writes the drawing in the chosen format.
-    fn save_export(&mut self, ctx: &egui::Context, form: ExportForm, bg: Color32) {
-        let Some(rect) = self.canvas.rect() else {
-            return;
-        };
+    /// Returns the error message if the export failed.
+    fn save_export(&mut self, ctx: &egui::Context, form: ExportForm, bg: Color32) -> Option<String> {
+        let rect = self.canvas.rect()?;
         // Export the whole drawing, even when it no longer fits in the window.
         // An empty canvas falls back to the visible area.
         let (origin, size) = export::bounds(self.canvas.lines())
@@ -112,14 +120,12 @@ impl Painty {
         let name = if name.is_empty() { "painty".to_owned() } else { name };
         let ext = form.format.ext();
 
-        let Some(mut path) = rfd::FileDialog::new()
+        // Dialog cancelled: nothing to do.
+        let mut path = rfd::FileDialog::new()
             .add_filter(form.format.label(), &[ext])
             .set_file_name(format!("{name}.{ext}"))
-            .save_file()
-        else {
-            // Dialog cancelled.
-            return;
-        };
+            .save_file()?;
+
         // Add the extension if the user typed a name without the right one.
         let has_ext = path
             .extension()
@@ -131,7 +137,7 @@ impl Painty {
             path = os.into();
         }
 
-        if let Err(error) = export::save(
+        export::save(
             &path,
             form.format,
             self.canvas.lines(),
@@ -139,9 +145,8 @@ impl Painty {
             size,
             bg,
             ctx.pixels_per_point(),
-        ) {
-            self.export_error = Some(error);
-        }
+        )
+        .err()
     }
 }
 
@@ -173,12 +178,7 @@ impl eframe::App for Painty {
         if close_requested {
             if !self.close_confirmed && !self.canvas.is_empty() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-                self.confirm_exit = true;
-                // The quit prompt takes over any other dialog.
-                self.settings_open = false;
-                self.confirm_clear = false;
-                self.export_error = None;
-                self.export_form = None;
+                self.modal = Modal::Quit;
             }
         } else {
             self.close_confirmed = false;
@@ -199,7 +199,7 @@ impl eframe::App for Painty {
         }
         self.last_ink = Some(c.ink);
 
-        // The update prompt is modal too: block shortcuts while it is shown.
+        // The update prompt is shown from the updater status, not from `Modal`.
         let status = self.updater.status.clone();
         let update_prompt = matches!(
             status,
@@ -207,12 +207,7 @@ impl eframe::App for Painty {
         );
 
         // Keyboard shortcuts, unless a dialog is open.
-        let modal_open = self.settings_open
-            || self.confirm_clear
-            || self.confirm_exit
-            || self.export_error.is_some()
-            || self.export_form.is_some()
-            || update_prompt;
+        let modal_open = self.modal != Modal::None || update_prompt;
         if !modal_open {
             let (cmd, undo, redo, save) = ctx.input(|i| {
                 (
@@ -242,22 +237,33 @@ impl eframe::App for Painty {
             Some(Action::Clear) => {
                 // Nothing to clear: skip the confirmation.
                 if !self.canvas.is_empty() {
-                    self.confirm_clear = true;
+                    self.modal = Modal::ClearConfirm;
                 }
             }
-            Some(Action::Settings) => self.settings_open = !self.settings_open,
+            Some(Action::Settings) => {
+                self.modal = if self.modal == Modal::Settings {
+                    Modal::None
+                } else {
+                    Modal::Settings
+                };
+            }
             Some(Action::Export) => self.open_export(),
             None => {}
         }
 
+        // Settings dialog. It keeps its own open flag, synced with `Modal`.
+        let mut settings_open = self.modal == Modal::Settings;
         settings::show(
             ctx,
-            &mut self.settings_open,
+            &mut settings_open,
             &mut self.mode,
             &mut self.canvas_follows_theme,
             &mut self.updater,
             &c,
         );
+        if !settings_open && self.modal == Modal::Settings {
+            self.modal = Modal::None;
+        }
 
         // Persist settings as soon as they change.
         let current = (self.mode, self.canvas_follows_theme);
@@ -269,7 +275,8 @@ impl eframe::App for Painty {
         // "Clear all" confirmation dialog.
         let mut confirm = false;
         let mut cancel = false;
-        let dismissed = dialog::show(ctx, "confirm_clear", self.confirm_clear, &c, 300.0, |ui| {
+        let clear_open = self.modal == Modal::ClearConfirm;
+        let dismissed_clear = dialog::show(ctx, "confirm_clear", clear_open, &c, 300.0, |ui| {
             ui.label(RichText::new("Clear everything?").size(18.0).strong());
             ui.add_space(6.0);
             ui.label(RichText::new("This drawing will be permanently deleted.").color(c.text_dim));
@@ -284,93 +291,88 @@ impl eframe::App for Painty {
             });
         });
 
-        if confirm && self.confirm_clear {
+        if confirm {
             self.canvas.clear();
         }
-        if confirm || cancel || dismissed {
-            self.confirm_clear = false;
+        if confirm || cancel || dismissed_clear {
+            if self.modal == Modal::ClearConfirm {
+                self.modal = Modal::None;
+            }
         }
 
         // Export popup: name and format. The file location is asked afterwards.
         let mut export_go = false;
         let mut export_cancel = false;
-        let export_open = self.export_form.is_some();
+        let export_open = self.modal == Modal::Export;
         let dismissed_export = dialog::show(ctx, "export_form", export_open, &c, 300.0, |ui| {
-            if let Some(form) = self.export_form.as_mut() {
-                ui.label(RichText::new("Export drawing").size(18.0).strong());
-                ui.add_space(12.0);
-                ui.label(RichText::new("Name").color(c.text_dim));
-                ui.add_space(4.0);
-                ui.add(egui::TextEdit::singleline(&mut form.name).desired_width(300.0));
-                ui.add_space(10.0);
-                ui.label(RichText::new("Format").color(c.text_dim));
-                ui.add_space(4.0);
-                widgets::segmented(
-                    ui,
-                    "export_format",
-                    &c,
-                    &mut form.format,
-                    &[(Format::Png, "PNG"), (Format::Jpeg, "JPEG")],
-                    147.0,
-                );
-                ui.add_space(16.0);
-                ui.horizontal(|ui| {
-                    if widgets::button(ui, "export_cancel", &c, "Cancel", Kind::Soft, 146.0)
-                        .clicked()
-                    {
-                        export_cancel = true;
-                    }
-                    if widgets::button(ui, "export_go", &c, "Export", Kind::Soft, 146.0).clicked() {
-                        export_go = true;
-                    }
-                });
-            }
+            let form = &mut self.export_form;
+            ui.label(RichText::new("Export drawing").size(18.0).strong());
+            ui.add_space(12.0);
+            ui.label(RichText::new("Name").color(c.text_dim));
+            ui.add_space(4.0);
+            ui.add(egui::TextEdit::singleline(&mut form.name).desired_width(300.0));
+            ui.add_space(10.0);
+            ui.label(RichText::new("Format").color(c.text_dim));
+            ui.add_space(4.0);
+            widgets::segmented(
+                ui,
+                "export_format",
+                &c,
+                &mut form.format,
+                &[(Format::Png, "PNG"), (Format::Jpeg, "JPEG")],
+                147.0,
+            );
+            ui.add_space(16.0);
+            ui.horizontal(|ui| {
+                if widgets::button(ui, "export_cancel", &c, "Cancel", Kind::Soft, 146.0).clicked() {
+                    export_cancel = true;
+                }
+                if widgets::button(ui, "export_go", &c, "Export", Kind::Soft, 146.0).clicked() {
+                    export_go = true;
+                }
+            });
         });
 
         if export_go {
-            if let Some(form) = self.export_form.take() {
-                self.save_export(ctx, form, c.canvas_bg);
+            let form = self.export_form.clone();
+            self.modal = Modal::None;
+            if let Some(error) = self.save_export(ctx, form, c.canvas_bg) {
+                self.error_text = error;
+                self.modal = Modal::Error;
             }
         }
         if export_cancel || dismissed_export {
-            self.export_form = None;
+            if self.modal == Modal::Export {
+                self.modal = Modal::None;
+            }
         }
 
         // Export error dialog.
-        let error = self.export_error.clone().unwrap_or_default();
+        let error = self.error_text.clone();
         let mut error_close = false;
-        let error_dismissed = dialog::show(
-            ctx,
-            "export_error",
-            self.export_error.is_some(),
-            &c,
-            300.0,
-            |ui| {
-                ui.label(RichText::new("Export failed").size(18.0).strong());
-                ui.add_space(6.0);
-                ui.label(RichText::new(error.as_str()).color(c.text_dim));
-                ui.add_space(16.0);
-                if widgets::button(ui, "export_error_close", &c, "Close", Kind::Soft, 300.0)
-                    .clicked()
-                {
-                    error_close = true;
-                }
-            },
-        );
-        if error_close || error_dismissed {
-            self.export_error = None;
+        let error_open = self.modal == Modal::Error;
+        let dismissed_error = dialog::show(ctx, "export_error", error_open, &c, 300.0, |ui| {
+            ui.label(RichText::new("Export failed").size(18.0).strong());
+            ui.add_space(6.0);
+            ui.label(RichText::new(error.as_str()).color(c.text_dim));
+            ui.add_space(16.0);
+            if widgets::button(ui, "export_error_close", &c, "Close", Kind::Soft, 300.0).clicked() {
+                error_close = true;
+            }
+        });
+        if error_close || dismissed_error {
+            if self.modal == Modal::Error {
+                self.modal = Modal::None;
+            }
         }
 
         // Update prompt: shown when a new version is available, while it downloads,
-        // or when the install failed. It never stacks over another dialog: wait
-        // until the others have fully faded out.
+        // or when the install failed. It waits until every other dialog has faded out.
         let has_drawing = !self.canvas.is_empty();
-        let other_dialog_visible = self.confirm_exit
-            || dialog::is_visible(ctx, "settings")
-            || dialog::is_visible(ctx, "confirm_clear")
-            || dialog::is_visible(ctx, "confirm_exit")
-            || dialog::is_visible(ctx, "export_form")
-            || dialog::is_visible(ctx, "export_error");
+        let other_dialog_visible = self.modal != Modal::None
+            || ["settings", "confirm_clear", "export_form", "export_error", "confirm_exit"]
+                .iter()
+                .any(|id| dialog::is_visible(ctx, id));
         let show_update = update_prompt && !other_dialog_visible;
         let mut install = false;
         let mut later = false;
@@ -386,11 +388,9 @@ impl eframe::App for Painty {
                     if has_drawing {
                         ui.add_space(8.0);
                         ui.label(
-                            RichText::new(
-                                "Your current drawing will be lost when Painty restarts.",
-                            )
-                            .color(c.danger)
-                            .size(13.0),
+                            RichText::new("Your current drawing will be lost when Painty restarts.")
+                                .color(c.danger)
+                                .size(13.0),
                         );
                     }
                     ui.add_space(16.0);
@@ -424,9 +424,7 @@ impl eframe::App for Painty {
                     ui.add_space(6.0);
                     ui.label(RichText::new(error.as_str()).color(c.text_dim));
                     ui.add_space(16.0);
-                    if widgets::button(ui, "update_close", &c, "Close", Kind::Soft, 300.0)
-                        .clicked()
-                    {
+                    if widgets::button(ui, "update_close", &c, "Close", Kind::Soft, 300.0).clicked() {
                         later = true;
                     }
                 }
@@ -447,7 +445,8 @@ impl eframe::App for Painty {
         // "Quit without saving?" confirmation, when the drawing is not empty.
         let mut quit = false;
         let mut keep = false;
-        let dismissed_exit = dialog::show(ctx, "confirm_exit", self.confirm_exit, &c, 300.0, |ui| {
+        let quit_open = self.modal == Modal::Quit;
+        let dismissed_quit = dialog::show(ctx, "confirm_exit", quit_open, &c, 300.0, |ui| {
             ui.label(RichText::new("Quit Painty?").size(18.0).strong());
             ui.add_space(6.0);
             ui.label(
@@ -468,12 +467,14 @@ impl eframe::App for Painty {
         });
 
         if quit {
-            self.confirm_exit = false;
+            self.modal = Modal::None;
             self.close_confirmed = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
-        if keep || dismissed_exit {
-            self.confirm_exit = false;
+        if keep || dismissed_quit {
+            if self.modal == Modal::Quit {
+                self.modal = Modal::None;
+            }
         }
     }
 }
