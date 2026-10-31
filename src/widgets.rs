@@ -60,7 +60,7 @@ pub fn button_anim(
 ) -> Response {
     let (base, hover, fg) = match kind {
         Kind::Ghost => (Color32::TRANSPARENT, c.hover, c.text),
-        Kind::Soft => (c.segment_bg, c.hover, c.text),
+        Kind::Soft => (c.track, c.hover, c.text),
         Kind::Danger => (c.danger, c.danger_hover, Color32::WHITE),
     };
 
@@ -180,7 +180,7 @@ pub fn swatch(
     painter.circle_stroke(
         center,
         r,
-        Stroke::new(1.0_f32, c.bar_border.gamma_multiply(vis)),
+        Stroke::new(1.0_f32, c.border.gamma_multiply(vis)),
     );
     if sel > 0.0 {
         painter.circle_stroke(
@@ -214,7 +214,7 @@ pub fn px_label(ui: &mut Ui, c: &Colors, text: &str, vis: f32) {
 pub fn divider(ui: &mut Ui, c: &Colors, vis: f32) {
     let (rect, _) = alloc(ui, vec2(1.0 * vis, 20.0), Sense::hover(), vis);
     ui.painter()
-        .rect_filled(rect, 0.0, c.bar_border.gamma_multiply(vis));
+        .rect_filled(rect, 0.0, c.border.gamma_multiply(vis));
 }
 
 /// Segmented control with a pill that slides to the selected option.
@@ -238,14 +238,14 @@ pub fn segmented<T: Copy + PartialEq>(
         .animate_value_with_time(Id::new(("seg_pos", id)), current as f32, 0.16);
 
     let painter = ui.painter();
-    painter.rect_filled(rect, Rounding::same(11.0), c.segment_bg);
+    painter.rect_filled(rect, Rounding::same(11.0), c.track);
 
     let pill = Rect::from_min_size(
         pos2(rect.min.x + pad + seg_w * pos, rect.min.y + pad),
         vec2(seg_w, h - pad * 2.0),
     );
-    painter.rect_filled(pill, Rounding::same(8.0), c.segment_active);
-    painter.rect_stroke(pill, Rounding::same(8.0), Stroke::new(1.0_f32, c.bar_border));
+    painter.rect_filled(pill, Rounding::same(8.0), c.active);
+    painter.rect_stroke(pill, Rounding::same(8.0), Stroke::new(1.0_f32, c.border));
 
     let mut clicked = None;
     for (i, (v, label)) in options.iter().enumerate() {
@@ -312,10 +312,10 @@ pub fn language_button(ui: &mut Ui, c: &Colors, lang: Lang, selected: bool, widt
         .animate_bool_with_time(Id::new(("lang_sel", lang.code())), selected, 0.16);
 
     let painter = ui.painter().clone();
-    let fill = c.segment_bg.lerp_to_gamma(c.hover, hov).lerp_to_gamma(c.segment_active, sel);
+    let fill = c.track.lerp_to_gamma(c.hover, hov).lerp_to_gamma(c.active, sel);
     painter.rect_filled(rect, Rounding::same(9.0), fill);
     if sel > 0.0 {
-        painter.rect_stroke(rect, Rounding::same(9.0), Stroke::new(1.0_f32, c.bar_border.gamma_multiply(sel)));
+        painter.rect_stroke(rect, Rounding::same(9.0), Stroke::new(1.0_f32, c.border.gamma_multiply(sel)));
     }
 
     let flag_rect = Rect::from_min_size(

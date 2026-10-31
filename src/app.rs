@@ -7,7 +7,7 @@ use crate::export::{self, Format};
 use crate::i18n::{self, t, tf, Lang};
 use crate::model::Brush;
 use crate::settings;
-use crate::theme::Mode;
+use crate::theme::{CanvasColor, Mode};
 use crate::toolbar::{self, Action};
 use crate::updater::{self, Status, Updater};
 use crate::widgets::{self, Kind};
@@ -73,7 +73,12 @@ impl Painty {
 
         let cfg = config::load();
         i18n::set_lang(cfg.language);
-        let ink = cfg.mode.colors(cfg.canvas_follows_theme).ink;
+        let canvas = if cfg.canvas_follows_theme {
+            cfg.mode.canvas()
+        } else {
+            CanvasColor::Light
+        };
+        let ink = cfg.mode.colors(canvas).ink;
 
         let mut brush = Brush::default();
         brush.color = ink;
@@ -193,7 +198,12 @@ impl eframe::App for Painty {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
 
-        let c = self.mode.colors(self.canvas_follows_theme);
+        let canvas = if self.canvas_follows_theme {
+            self.mode.canvas()
+        } else {
+            CanvasColor::Light
+        };
+        let c = self.mode.colors(canvas);
 
         // When the canvas background changes, the default ink follows (black <-> white).
         if let Some(prev) = self.last_ink {

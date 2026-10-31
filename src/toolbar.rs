@@ -50,8 +50,8 @@ pub fn show(ctx: &Context, brush: &mut Brush, c: &Colors) -> Option<Action> {
             theme::apply(ui, c);
 
             Frame::none()
-                .fill(c.bar_bg)
-                .stroke(Stroke::new(1.0_f32, c.bar_border))
+                .fill(c.surface)
+                .stroke(Stroke::new(1.0_f32, c.border))
                 .rounding(Rounding::same(18.0))
                 .inner_margin(Margin::symmetric(12.0, 8.0))
                 .show(ui, |ui| {

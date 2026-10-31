@@ -90,8 +90,8 @@ pub fn show(
         .show(ctx, |ui| {
             theme::apply(ui, c);
             Frame::none()
-                .fill(c.bar_bg)
-                .stroke(Stroke::new(1.0_f32, c.bar_border))
+                .fill(c.surface)
+                .stroke(Stroke::new(1.0_f32, c.border))
                 .rounding(Rounding::same(18.0))
                 .inner_margin(Margin::same(INNER_PADDING))
                 .show(ui, |ui| {
