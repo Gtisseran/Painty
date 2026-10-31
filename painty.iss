@@ -2,7 +2,7 @@
 ; Build with: ISCC painty.iss   (or open it in Inno Setup and press F9)
 
 ; Keep in sync with the version in Cargo.toml.
-#define MyAppVersion "0.1.3"
+#define MyAppVersion "0.2.0"
 
 [Setup]
 AppName=Painty
