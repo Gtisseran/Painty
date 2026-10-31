@@ -40,6 +40,14 @@ enum Modal {
     Quit,
 }
 
+/// True on the first frame a dialog is open, used to put focus on its safe action.
+fn opening_frame(ctx: &egui::Context, id: &str, open: bool) -> bool {
+    let key = egui::Id::new(("dialog_opening", id));
+    let was_open = ctx.data(|d| d.get_temp::<bool>(key)).unwrap_or(false);
+    ctx.data_mut(|d| d.insert_temp(key, open));
+    open && !was_open
+}
+
 /// Main application state, updated every frame by egui.
 pub struct Painty {
     canvas: Canvas,
@@ -310,20 +318,27 @@ impl eframe::App for Painty {
             self.last_saved = current;
         }
 
-        // "Clear all" confirmation dialog.
+        // "Delete drawing" confirmation dialog: 340 px card, safe action focused first.
         let mut confirm = false;
         let mut cancel = false;
         let clear_open = self.modal == Modal::ClearConfirm;
+        let focus_cancel = opening_frame(ctx, "confirm_clear", clear_open);
         let dismissed_clear = dialog::show(ctx, "confirm_clear", clear_open, &c, 340.0, c.surface, |ui| {
-            ui.label(RichText::new(t("dialog.clear.title")).size(18.0).strong());
-            ui.add_space(6.0);
-            ui.label(RichText::new(t("dialog.clear.body")).color(c.text_dim));
-            ui.add_space(16.0);
+            ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+            widgets::title(ui, &c, t("dialog.clear.title"));
+            ui.add_space(10.0);
+            ui.label(RichText::new(t("dialog.clear.body")).size(14.0).color(c.text_dim));
+            ui.add_space(24.0);
             ui.horizontal(|ui| {
-                if widgets::button(ui, "keep", &c, t("button.keep"), Kind::Soft, 140.0).clicked() {
+                ui.spacing_mut().item_spacing.x = 10.0;
+                let keep = widgets::button(ui, "keep", &c, t("button.cancel"), Kind::Soft, 141.0);
+                if focus_cancel {
+                    keep.request_focus();
+                }
+                if keep.clicked() {
                     cancel = true;
                 }
-                if widgets::button(ui, "wipe", &c, t("button.clear_all"), Kind::Danger, 140.0)
+                if widgets::button(ui, "wipe", &c, t("button.delete"), Kind::Danger, 141.0)
                     .clicked()
                 {
                     confirm = true;
@@ -346,30 +361,39 @@ impl eframe::App for Painty {
         let export_open = self.modal == Modal::Export;
         let dismissed_export = dialog::show(ctx, "export_form", export_open, &c, 380.0, c.surface, |ui| {
             let form = &mut self.export_form;
-            ui.label(RichText::new(t("dialog.export.title")).size(18.0).strong());
-            ui.add_space(12.0);
-            ui.label(RichText::new(t("export.name")).color(c.text_dim));
+            ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+
+            widgets::title(ui, &c, t("dialog.export.title"));
             ui.add_space(4.0);
-            ui.add(egui::TextEdit::singleline(&mut form.name).desired_width(300.0));
-            ui.add_space(10.0);
-            ui.label(RichText::new(t("export.format")).color(c.text_dim));
-            ui.add_space(4.0);
-            widgets::segmented(
+            ui.add_space(14.0);
+
+            ui.label(RichText::new(t("export.name")).size(13.0).color(c.text_dim));
+            ui.add_space(14.0);
+            widgets::text_field(ui, "export_name", &c, &mut form.name, "painty");
+            ui.add_space(14.0);
+
+            ui.label(RichText::new(t("export.format")).size(13.0).color(c.text_dim));
+            ui.add_space(14.0);
+            widgets::segmented_sized(
                 ui,
                 "export_format",
                 &c,
                 &mut form.format,
                 &[(Format::Png, "PNG"), (Format::Jpeg, "JPEG")],
-                147.0,
+                162.0,
+                41.0,
+                14.0,
             );
-            ui.add_space(16.0);
+            ui.add_space(14.0 + 6.0);
+
             ui.horizontal(|ui| {
-                if widgets::button(ui, "export_cancel", &c, t("button.cancel"), Kind::Soft, 146.0)
+                ui.spacing_mut().item_spacing.x = 10.0;
+                if widgets::button(ui, "export_cancel", &c, t("button.cancel"), Kind::Soft, 161.0)
                     .clicked()
                 {
                     export_cancel = true;
                 }
-                if widgets::button(ui, "export_go", &c, t("button.export"), Kind::Soft, 146.0)
+                if widgets::button(ui, "export_go", &c, t("button.export"), Kind::Primary, 161.0)
                     .clicked()
                 {
                     export_go = true;
@@ -500,18 +524,30 @@ impl eframe::App for Painty {
         let mut quit = false;
         let mut keep = false;
         let quit_open = self.modal == Modal::Quit;
+        let focus_keep = opening_frame(ctx, "confirm_exit", quit_open);
         let dismissed_quit = dialog::show(ctx, "confirm_exit", quit_open, &c, 340.0, c.surface, |ui| {
-            ui.label(RichText::new(t("dialog.quit.title")).size(18.0).strong());
-            ui.add_space(6.0);
-            ui.label(RichText::new(t("dialog.quit.body")).color(c.text_dim));
-            ui.add_space(16.0);
+            ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+            widgets::title(ui, &c, t("dialog.quit.title"));
+            ui.add_space(10.0);
+            ui.label(RichText::new(t("dialog.quit.body")).size(14.0).color(c.text_dim));
+            ui.add_space(24.0);
             ui.horizontal(|ui| {
-                if widgets::button(ui, "quit_cancel", &c, t("button.keep_drawing"), Kind::Soft, 140.0)
-                    .clicked()
-                {
+                ui.spacing_mut().item_spacing.x = 10.0;
+                let stay = widgets::button(
+                    ui,
+                    "quit_cancel",
+                    &c,
+                    t("button.keep_drawing"),
+                    Kind::Soft,
+                    141.0,
+                );
+                if focus_keep {
+                    stay.request_focus();
+                }
+                if stay.clicked() {
                     keep = true;
                 }
-                if widgets::button(ui, "quit_confirm", &c, t("button.quit"), Kind::Danger, 140.0)
+                if widgets::button(ui, "quit_confirm", &c, t("button.quit"), Kind::Danger, 141.0)
                     .clicked()
                 {
                     quit = true;

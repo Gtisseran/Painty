@@ -100,10 +100,62 @@ pub fn button(ui: &mut Ui, id: &str, c: &Colors, label: &str, kind: Kind, min_w:
         font,
         fg.gamma_multiply(dim),
     );
+    if resp.has_focus() {
+        painter.rect_stroke(
+            rect.shrink(1.0),
+            Rounding::same(9.0),
+            Stroke::new(2.0_f32, c.accent),
+        );
+    }
 
     pointer_cursor(ui, &resp);
     resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
     resp
+}
+
+/// Single-line field on a rounded background, with 12 px side padding and
+/// 10 px vertical padding. A click anywhere in the field focuses the text.
+pub fn text_field(
+    ui: &mut Ui,
+    id: &str,
+    c: &Colors,
+    value: &mut String,
+    hint: &str,
+) -> Response {
+    let field_id = Id::new(("text_field", id));
+    let (rect, bg) = ui.allocate_exact_size(
+        vec2(ui.available_width(), 38.0),
+        Sense {
+            click: true,
+            drag: false,
+            focusable: false,
+        },
+    );
+    if bg.clicked() {
+        ui.memory_mut(|m| m.request_focus(field_id));
+    }
+    if bg.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::Text);
+    }
+    ui.painter()
+        .rect_filled(rect, Rounding::same(10.0), c.field);
+
+    let inner = rect.shrink2(vec2(12.0, 10.0));
+    let mut child = ui.new_child(
+        UiBuilder::new()
+            .max_rect(inner)
+            .layout(Layout::left_to_right(Align::Center)),
+    );
+    child.add(
+        egui::TextEdit::singleline(value)
+            .id(field_id)
+            .frame(false)
+            .margin(egui::Margin::ZERO)
+            .font(FontId::proportional(14.0))
+            .text_color(c.text)
+            .hint_text(hint)
+            .desired_width(f32::INFINITY),
+    )
 }
 
 /// Compact text button used in the toolbar (32 px high, 13 px label).
@@ -427,6 +479,13 @@ pub fn segmented_sized<T: Copy + PartialEq>(
             FontId::proportional(font_size),
             color,
         );
+        if resp.has_focus() {
+            painter.rect_stroke(
+                cell.shrink(1.0),
+                Rounding::same(6.0),
+                Stroke::new(2.0_f32, c.accent),
+            );
+        }
 
         pointer_cursor(ui, &resp);
         resp.widget_info(|| {
@@ -447,18 +506,6 @@ pub fn segmented_sized<T: Copy + PartialEq>(
         return changed;
     }
     false
-}
-
-/// Segmented control used by the settings rows (13 px labels, 34 px high).
-pub fn segmented<T: Copy + PartialEq>(
-    ui: &mut Ui,
-    id: &str,
-    c: &Colors,
-    value: &mut T,
-    options: &[(T, &str)],
-    seg_w: f32,
-) -> bool {
-    segmented_sized(ui, id, c, value, options, seg_w, 34.0, 13.0)
 }
 
 /// Language button: flag and language name on the current-language colour.
