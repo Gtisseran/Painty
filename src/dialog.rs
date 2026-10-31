@@ -85,11 +85,7 @@ pub fn show(
     let max_h = (screen.height() - 2.0 * EDGE_MARGIN).max(120.0);
     let max_content_h = (max_h - 2.0 * INNER_PADDING).max(40.0);
 
-    // The window size and the session are part of the ids: a resize or a new opening
-    // makes egui measure the popup and its scroll area again.
-    let size_key = (screen.width().round() as i32, screen.height().round() as i32);
-
-    egui::Area::new(Id::new(("dialog_box", id, size_key, session)))
+    egui::Area::new(Id::new(("dialog_box", id, session)))
         .order(Order::Tooltip)
         .anchor(Align2::CENTER_CENTER, vec2(0.0, (1.0 - t) * 14.0))
         // Measure the content against the full height available, not a default size:
@@ -105,14 +101,38 @@ pub fn show(
                 .show(ui, |ui| {
                     // The popup is exactly as wide as its content, which never exceeds the window.
                     ui.set_width(content_w);
+                    // The height is decided here, from the content size measured on the
+                    // previous frame, never from the size egui remembers for the area.
+                    // That remembered size would keep the popup small after the window
+                    // grows back. The height eases toward its target, so a resize is smooth.
                     // Scrolls only when the window is too short for the content.
-                    ScrollArea::vertical()
-                        .id_salt(("dialog_scroll", id, size_key, session))
-                        .max_height(max_content_h)
-                        .auto_shrink([false, true])
-                        .show(ui, |ui| {
-                            content(ui);
-                        });
+                    let height_id = Id::new(("dialog_content_h", id, session));
+                    let measured = ctx.data(|d| d.get_temp::<f32>(height_id));
+                    let target = measured.map_or(max_content_h, |h| h.min(max_content_h));
+                    let height = if measured.is_some() {
+                        ctx.animate_value_with_time(
+                            Id::new(("dialog_h_anim", id, session)),
+                            target,
+                            0.12,
+                        )
+                    } else {
+                        target
+                    };
+                    let out = ui.allocate_ui_with_layout(
+                        vec2(content_w, height),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            ScrollArea::vertical()
+                                .id_salt(("dialog_scroll", id, session))
+                                .max_height(height)
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    content(ui);
+                                })
+                        },
+                    );
+                    let content_h = out.inner.content_size.y;
+                    ctx.data_mut(|d| d.insert_temp(height_id, content_h));
                 });
         });
 

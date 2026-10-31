@@ -193,6 +193,34 @@ impl eframe::App for Painty {
         }
         self.updater.poll(ctx);
 
+        // Focus rings only appear for keyboard navigation, never after a mouse click.
+        let (key_pressed, pointer_pressed) = ctx.input(|i| {
+            (
+                i.events
+                    .iter()
+                    .any(|e| {
+                        matches!(
+                            e,
+                            egui::Event::Key {
+                                pressed: true,
+                                key: Key::Tab
+                                    | Key::ArrowLeft
+                                    | Key::ArrowRight
+                                    | Key::ArrowUp
+                                    | Key::ArrowDown,
+                                ..
+                            }
+                        )
+                    }),
+                i.pointer.any_pressed(),
+            )
+        });
+        if key_pressed {
+            widgets::set_keyboard_mode(ctx, true);
+        } else if pointer_pressed {
+            widgets::set_keyboard_mode(ctx, false);
+        }
+
         // Ask before closing when the drawing would be lost. A restart after an
         // update bypasses the question: the new version is already running.
         let close_requested = ctx.input(|i| i.viewport().close_requested());
@@ -241,16 +269,22 @@ impl eframe::App for Painty {
         // Keyboard shortcuts, unless a dialog is open.
         let modal_open = self.modal != Modal::None || update_prompt;
         if !modal_open {
-            let (cmd, undo, redo, save) = ctx.input(|i| {
+            let (cmd, shift, undo, redo, save) = ctx.input(|i| {
                 (
                     i.modifiers.command,
+                    i.modifiers.shift,
                     i.key_pressed(Key::Z),
                     i.key_pressed(Key::Y),
                     i.key_pressed(Key::S),
                 )
             });
             if cmd && undo {
-                self.canvas.undo();
+                // Ctrl+Shift+Z redoes, like Ctrl+Y.
+                if shift {
+                    self.canvas.redo();
+                } else {
+                    self.canvas.undo();
+                }
             }
             if cmd && redo {
                 self.canvas.redo();
@@ -420,10 +454,11 @@ impl eframe::App for Painty {
         let mut error_close = false;
         let error_open = self.modal == Modal::Error;
         let dismissed_error = dialog::show(ctx, "export_error", error_open, &c, 360.0, c.surface, |ui| {
-            ui.label(RichText::new(t("dialog.export_error.title")).size(18.0).strong());
-            ui.add_space(6.0);
+            ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+            widgets::title(ui, &c, t("dialog.export_error.title"));
+            ui.add_space(10.0);
             ui.label(RichText::new(error.as_str()).color(c.text_dim));
-            ui.add_space(16.0);
+            ui.add_space(24.0);
             if widgets::button(ui, "export_error_close", &c, t("button.close"), Kind::Soft, 312.0)
                 .clicked()
             {
@@ -447,10 +482,11 @@ impl eframe::App for Painty {
         let mut install = false;
         let mut later = false;
         let dismissed_update = dialog::show(ctx, "update", show_update, &c, 380.0, c.surface, |ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
             match &status {
                 Status::Available(release) => {
-                    ui.label(RichText::new(t("update.title")).size(18.0).strong());
-                    ui.add_space(6.0);
+                    widgets::title(ui, &c, t("update.title"));
+                    ui.add_space(10.0);
                     ui.label(
                         RichText::new(tf("update.ready", &[("version", release.version.as_str())]))
                             .color(c.text_dim),
@@ -463,9 +499,10 @@ impl eframe::App for Painty {
                                 .size(13.0),
                         );
                     }
-                    ui.add_space(16.0);
+                    ui.add_space(24.0);
                     ui.horizontal(|ui| {
-                        if widgets::button(ui, "later", &c, t("button.later"), Kind::Soft, 146.0)
+                        ui.spacing_mut().item_spacing.x = 10.0;
+                        if widgets::button(ui, "later", &c, t("button.later"), Kind::Soft, 161.0)
                             .clicked()
                         {
                             later = true;
@@ -475,7 +512,9 @@ impl eframe::App for Painty {
                         } else {
                             t("button.install")
                         };
-                        if widgets::button(ui, "install", &c, install_label, Kind::Soft, 146.0)
+                        // Destructive when the drawing would be lost, main action otherwise.
+                        let install_kind = if has_drawing { Kind::Danger } else { Kind::Primary };
+                        if widgets::button(ui, "install", &c, install_label, install_kind, 161.0)
                             .clicked()
                         {
                             install = true;
@@ -483,8 +522,8 @@ impl eframe::App for Painty {
                     });
                 }
                 Status::Downloading(progress) => {
-                    ui.label(RichText::new(t("update.downloading")).size(18.0).strong());
-                    ui.add_space(12.0);
+                    widgets::title(ui, &c, t("update.downloading"));
+                    ui.add_space(14.0);
                     let fraction = progress.fraction();
                     // Indeterminate (animated) bar when the size is unknown.
                     let mut bar = egui::ProgressBar::new(fraction.unwrap_or(0.0))
@@ -496,10 +535,10 @@ impl eframe::App for Painty {
                     ui.add(bar);
                 }
                 Status::InstallFailed(error) => {
-                    ui.label(RichText::new(t("update.failed_title")).size(18.0).strong());
-                    ui.add_space(6.0);
+                    widgets::title(ui, &c, t("update.failed_title"));
+                    ui.add_space(10.0);
                     ui.label(RichText::new(error.as_str()).color(c.text_dim));
-                    ui.add_space(16.0);
+                    ui.add_space(24.0);
                     if widgets::button(ui, "update_close", &c, t("button.close"), Kind::Soft, 332.0)
                         .clicked()
                     {

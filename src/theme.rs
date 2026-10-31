@@ -49,7 +49,9 @@ impl Mode {
                 hover: Color32::from_rgb(0xec, 0xec, 0xef),
                 field: Color32::from_rgb(0xf4, 0xf4, 0xf5),
                 text: Color32::from_rgb(0x18, 0x18, 0x1b),
-                text_dim: Color32::from_rgb(0x71, 0x71, 0x7a),
+                // Darkened from #71717a: that value gave 4.4:1 on the row colour and
+                // 4.0:1 on the segmented track, below the 4.5:1 required.
+                text_dim: Color32::from_rgb(0x62, 0x62, 0x6b),
                 separator: Color32::from_rgb(0xd4, 0xd4, 0xd8),
                 accent: Color32::from_rgb(0x25, 0x63, 0xeb),
                 primary_bg: Color32::from_rgb(0x18, 0x18, 0x1b),
@@ -240,6 +242,8 @@ pub fn apply(ui: &mut Ui, c: &Colors) {
     v.extreme_bg_color = c.field;
     v.faint_bg_color = c.row;
     v.selection.bg_fill = c.accent;
+    // No outline around focused text fields or selected items.
+    v.selection.stroke = Stroke::NONE;
     v.hyperlink_color = c.accent;
     v.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, c.text);
     v.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, c.border);
@@ -250,7 +254,7 @@ pub fn apply(ui: &mut Ui, c: &Colors) {
     w.hovered.weak_bg_fill = c.hover;
     w.hovered.bg_fill = c.hover;
     w.active.weak_bg_fill = c.hover;
-    w.active.bg_fill = c.accent;
+    w.active.bg_fill = c.hover;
 
     for s in [&mut w.inactive, &mut w.hovered, &mut w.active] {
         s.rounding = Rounding::same(10.0);

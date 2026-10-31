@@ -15,7 +15,7 @@ const CONTENT_H: f32 = 392.0;
 /// Separator (1) + top padding (16) + footer row (40).
 const FOOTER_H: f32 = 57.0;
 /// Width reserved on the right of a setting row for its control.
-const CONTROL_W: f32 = 108.0;
+const CONTROL_W: f32 = 124.0;
 /// Segment width for the two-option controls.
 const SEG_W: f32 = 50.0;
 /// Height of the segmented controls and the language button.
@@ -76,14 +76,10 @@ pub fn show(
         ui.add_space(12.0);
 
         widgets::setting_row(ui, c, t("settings.language"), CONTROL_W, |ui| {
-            let next = match *language {
-                Lang::Fr => Lang::En,
-                Lang::En => Lang::Fr,
-            };
-            if widgets::language_button(ui, c, *language).clicked() {
-                *language = next;
+            if let Some(lang) = widgets::language_menu(ui, c, *language) {
+                *language = lang;
                 // Applies from the next frame, so every text switches at once.
-                i18n::set_lang(next);
+                i18n::set_lang(lang);
             }
         });
 

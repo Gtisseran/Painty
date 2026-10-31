@@ -24,7 +24,8 @@ theme.rs is used by every UI file.
 | `src/` | Rust source code |
 | `assets/` | Images, icons, flags and translations, embedded into the binary at compile time |
 | `assets/svg/` | Icons (dark and light versions) |
-| `assets/flags/` | Flags used by the language switcher |
+| `assets/flags/` | Flags used by the language dropdown |
+| `assets/fonts/` | Inter fonts (regular and semibold) |
 | `assets/lang/` | Translations (`en.json`, `fr.json`) |
 | `dist/` | Installer output (ignored by Git) |
 | `target/` | Build output (ignored by Git) |
@@ -39,7 +40,8 @@ theme.rs is used by every UI file.
 | `svg/undo_dark.svg` / `svg/undo_light.svg` | Undo icons for dark and light themes |
 | `svg/trash_dark.svg` / `svg/trash_light.svg` | Clear icons for dark and light themes |
 | `svg/export_dark.svg` / `svg/export_light.svg` | Export icons for dark and light themes |
-| `flags/fr.svg` / `flags/en.svg` | Flags used by the language switcher |
+| `flags/fr.svg` / `flags/en.svg` | Flags used by the language dropdown |
+| `fonts/Inter-Regular.ttf` / `fonts/Inter-SemiBold.ttf` | Interface fonts |
 | `lang/en.json` / `lang/fr.json` | Interface translations. Both files must contain the same keys. |
 
 Icons and flags are loaded using `egui::include_image!`, so they are embedded in the executable and do not need to be distributed separately.
@@ -52,15 +54,25 @@ Icons and flags are loaded using `egui::include_image!`, so they are embedded in
 | `app.rs` | Main application state (`Painty`). Handles keyboard shortcuts, the currently open dialog (`Modal`) and frame rendering. |
 | `canvas.rs` | Drawing area. Smooths pointer movement, renders strokes, erases by splitting them and maintains undo/redo history. |
 | `model.rs` | Core data types: `Tool`, `Line` (a single stroke) and `Brush` (current settings). |
-| `toolbar.rs` | Floating toolbar at the bottom of the window. Elements fold in and out with animations depending on the available width. |
-| `widgets.rs` | Custom UI controls: text buttons, icon buttons, color swatches, segmented controls, language button and settings icon. |
-| `dialog.rs` | Modal popup system: dimmed background, slide-in animation and scrolling when the window is too short. |
-| `settings.rs` | Settings dialog: theme, canvas background, language, updates, version and license information. |
+| `toolbar.rs` | Floating toolbar at the bottom of the window. One row whose elements fold in and out with animations to fit the window width, plus a palette row that opens above it when there is room. |
+| `widgets.rs` | Custom UI controls: text buttons, icon buttons, color swatches, size slider, segmented controls and the language dropdown. Focus rings are drawn only for keyboard navigation. |
+| `dialog.rs` | Modal popup system: dimmed background, slide-in animation and scrolling when the window is too short. Popups are measured again once a window resize has settled. |
+| `settings.rs` | Settings dialog: theme, canvas background, language, update check and version. |
 | `export.rs` | Exports drawings to PNG or JPEG. Renders at 3× resolution and averages pixels for smoother edges. |
 | `updater.rs` | Checks for updates and handles self-updates through GitHub Releases, including download progress. Runs in background threads. |
 | `i18n.rs` | Translation system. Loads JSON files and provides `t("key")` for plain text and `tf("key", &[...])` for formatted text. |
 | `config.rs` | Loads and saves settings (theme, canvas background and language) to `%APPDATA%\Painty\settings.txt`. |
-| `theme.rs` | Defines light and dark theme colors, the Segoe UI font and the egui style. |
+| `theme.rs` | Defines light and dark theme colors (text contrast of at least 4.5:1), the Inter fonts and the egui style. |
+
+## Toolbar
+
+The toolbar is a single row that keeps the same order at every width. Each element sits in a cell whose width and opacity are animated, so it folds in or out instead of jumping:
+
+1. The slider takes the space left over, between 32 and 120 px.
+2. When it can reach 80 px with the text labels, Undo and Clear switch from icons to text.
+3. When the slider can reach its full length, a palette row of six colors opens above the row.
+
+Widths are measured every frame, so translations of any length fit. With the eraser active, the color button and the palette are dimmed and the size stays visible.
 
 ## Drawing
 

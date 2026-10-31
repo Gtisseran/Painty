@@ -23,12 +23,12 @@
 - **Brush** with adjustable size and color, and a color picker
 - **Smooth strokes** that follow the pointer without jitter
 - **Eraser** that cuts through existing strokes
-- **Undo and redo** (Ctrl+Z / Ctrl+Y)
+- **Undo and redo** (Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z)
 - **Export** to PNG or JPEG, with a name and a format (Ctrl+S)
 - **Clear all**, with confirmation
-- **Light and dark theme**, with a white or theme-coloured canvas
+- **Light and dark theme**, with a light or dark canvas chosen separately
 - **French and English** interface, switchable in Settings
-- **Responsive toolbar** that adapts smoothly to the window width
+- **Responsive toolbar** whose elements fold in and out smoothly as the window is resized
 - **Automatic updates** from GitHub Releases, with a progress bar
 - **Settings saved** between sessions
 
@@ -45,12 +45,12 @@ Painty checks for updates when it starts. You can also check from **Settings →
 | Shortcut | Action |
 |----------|--------|
 | Ctrl+Z | Undo |
-| Ctrl+Y | Redo |
+| Ctrl+Y or Ctrl+Shift+Z | Redo |
 | Ctrl+S | Export |
 
 ## Languages
 
-The interface is available in English and French. The language is chosen in **Settings → Language** and saved with the other settings. Translations are stored in `assets/lang/` as JSON files, one per language.
+The interface is available in English and French. The language is chosen from a drop-down in **Settings → Language** and saved with the other settings. Translations are stored in `assets/lang/` as JSON files, one per language.
 
 ## Build from source
 

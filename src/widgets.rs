@@ -6,8 +6,8 @@
 //! also move with the left and right arrow keys.
 
 use eframe::egui::{
-    self, pos2, vec2, Align, Align2, Color32, CursorIcon, FontId, Id, Image, Key, Layout, Response,
-    Rounding, Sense, Stroke, Ui, UiBuilder, WidgetInfo, WidgetType,
+    self, pos2, vec2, Align, Align2, Color32, CursorIcon, FontId, Id, Image, Key, Layout, Painter,
+    Response, Rounding, Sense, Stroke, Ui, UiBuilder, WidgetInfo, WidgetType,
 };
 
 use crate::i18n::{t, Lang};
@@ -37,6 +37,23 @@ pub enum Icon {
 fn pointer_cursor(ui: &Ui, resp: &Response) {
     if resp.hovered() {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+}
+
+/// Records whether the last input came from the keyboard. Focus rings are drawn
+/// only for keyboard navigation, so a mouse click leaves no blue outline.
+pub fn set_keyboard_mode(ctx: &egui::Context, keyboard: bool) {
+    ctx.data_mut(|d| d.insert_temp(Id::new("keyboard_focus"), keyboard));
+}
+
+fn focus_visible(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp::<bool>(Id::new("keyboard_focus"))).unwrap_or(false)
+}
+
+/// 2 px accent ring drawn inside a control that has keyboard focus.
+fn focus_ring(painter: &Painter, rect: eframe::egui::Rect, rounding: Rounding, resp: &Response, c: &Colors) {
+    if resp.has_focus() && focus_visible(painter.ctx()) {
+        painter.rect_stroke(rect.shrink(1.0), rounding, Stroke::new(2.0_f32, c.accent));
     }
 }
 
@@ -73,9 +90,6 @@ pub fn button(ui: &mut Ui, id: &str, c: &Colors, label: &str, kind: Kind, min_w:
         .x;
     let size = vec2((text_w + 24.0).max(min_w), 40.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-    if resp.clicked() {
-        resp.request_focus();
-    }
 
     let t = ui
         .ctx()
@@ -100,13 +114,7 @@ pub fn button(ui: &mut Ui, id: &str, c: &Colors, label: &str, kind: Kind, min_w:
         font,
         fg.gamma_multiply(dim),
     );
-    if resp.has_focus() {
-        painter.rect_stroke(
-            rect.shrink(1.0),
-            Rounding::same(9.0),
-            Stroke::new(2.0_f32, c.accent),
-        );
-    }
+    focus_ring(painter, rect, Rounding::same(9.0), &resp, c);
 
     pointer_cursor(ui, &resp);
     resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
@@ -146,7 +154,7 @@ pub fn text_field(
             .max_rect(inner)
             .layout(Layout::left_to_right(Align::Center)),
     );
-    child.add(
+    let resp = child.add(
         egui::TextEdit::singleline(value)
             .id(field_id)
             .frame(false)
@@ -155,7 +163,9 @@ pub fn text_field(
             .text_color(c.text)
             .hint_text(hint)
             .desired_width(f32::INFINITY),
-    )
+    );
+    focus_ring(ui.painter(), rect, Rounding::same(10.0), &resp, c);
+    resp
 }
 
 /// Compact text button used in the toolbar (32 px high, 13 px label).
@@ -167,9 +177,6 @@ pub fn toolbar_button(ui: &mut Ui, id: &str, c: &Colors, label: &str) -> Respons
         .size()
         .x;
     let (rect, resp) = ui.allocate_exact_size(vec2(text_w + 20.0, 32.0), Sense::click());
-    if resp.clicked() {
-        resp.request_focus();
-    }
     let t = ui
         .ctx()
         .animate_bool_with_time(Id::new(("toolbar_text_hover", id)), resp.hovered(), 0.12);
@@ -182,6 +189,7 @@ pub fn toolbar_button(ui: &mut Ui, id: &str, c: &Colors, label: &str) -> Respons
         font,
         c.text,
     );
+    focus_ring(painter, rect, Rounding::same(8.0), &resp, c);
     pointer_cursor(ui, &resp);
     resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, ui.is_enabled(), label));
     resp
@@ -190,9 +198,6 @@ pub fn toolbar_button(ui: &mut Ui, id: &str, c: &Colors, label: &str) -> Respons
 /// Square 32×32 icon button with a tooltip.
 pub fn icon_button(ui: &mut Ui, id: &str, c: &Colors, icon: Icon, tip: &str) -> Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(32.0, 32.0), Sense::click());
-    if resp.clicked() {
-        resp.request_focus();
-    }
     let t = ui
         .ctx()
         .animate_bool_with_time(Id::new(("icon_hover", id)), resp.hovered(), 0.12);
@@ -211,6 +216,7 @@ pub fn icon_button(ui: &mut Ui, id: &str, c: &Colors, icon: Icon, tip: &str) -> 
         (Icon::Settings, true) => egui::include_image!("../assets/svg/settings_light.svg"),
     };
     Image::new(source).paint_at(ui, icon_rect);
+    focus_ring(ui.painter(), rect, Rounding::same(8.0), &resp, c);
 
     pointer_cursor(ui, &resp);
     resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, ui.is_enabled(), tip));
@@ -240,10 +246,10 @@ pub fn color_button(
         Rounding::same(6.0),
         Stroke::new(1.0_f32, c.knob_border.gamma_multiply(opacity)),
     );
+    focus_ring(painter, rect, Rounding::same(6.0), &resp, c);
 
     if enabled {
         if resp.clicked() {
-            resp.request_focus();
             ui.memory_mut(|m| m.toggle_popup(Id::new(("color_popup", id))));
         }
         let popup_id = Id::new(("color_popup", id));
@@ -271,48 +277,46 @@ pub fn color_button(
     resp
 }
 
-/// 20 px round colour swatch for the palette variant. Selected swatches get a
-/// double ring (surface gap + text colour) like the mockup.
+/// 20 px round colour swatch for the palette. The selected swatch gets a double
+/// ring (surface gap + text colour). When `enabled` is false it is drawn at 40 %
+/// opacity and ignores clicks.
 pub fn palette_swatch(
     ui: &mut Ui,
     index: usize,
     color: Color32,
     selected: bool,
+    enabled: bool,
     c: &Colors,
 ) -> Response {
     let (rect, _) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::hover());
-    let resp = ui.interact(
-        rect,
-        Id::new(("palette_swatch", index)),
-        Sense::click(),
-    );
-    if resp.clicked() {
-        resp.request_focus();
-    }
+    let sense = if enabled { Sense::click() } else { Sense::hover() };
+    let resp = ui.interact(rect, Id::new(("palette_swatch", index)), sense);
 
     let hov = ui.ctx().animate_bool_with_time(
         Id::new(("palette_hover", index)),
-        resp.hovered(),
+        resp.hovered() && enabled,
         0.12,
     );
+    let k = if enabled { 1.0 } else { 0.4 };
+    let focus = resp.has_focus() && focus_visible(ui.ctx());
     let painter = ui.painter();
     let center = rect.center();
     let r = 10.0 + hov * 0.8;
-    painter.circle_filled(center, r, color);
+    painter.circle_filled(center, r, color.gamma_multiply(k));
     painter.circle_stroke(center, r, Stroke::new(1.0_f32, c.border));
     if selected {
         painter.circle_stroke(center, 12.0, Stroke::new(2.0_f32, c.surface));
         painter.circle_stroke(center, 13.5, Stroke::new(1.5_f32, c.text));
     }
+    if focus {
+        painter.circle_stroke(center, 15.0, Stroke::new(2.0_f32, c.accent));
+    }
 
-    pointer_cursor(ui, &resp);
+    if enabled {
+        pointer_cursor(ui, &resp);
+    }
     resp.widget_info(|| {
-        WidgetInfo::selected(
-            WidgetType::Button,
-            ui.is_enabled(),
-            selected,
-            t("toolbar.color"),
-        )
+        WidgetInfo::selected(WidgetType::Button, enabled, selected, t("toolbar.color"))
     });
     resp
 }
@@ -328,9 +332,6 @@ pub fn size_slider(
     tip: &str,
 ) -> Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 32.0), Sense::click_and_drag());
-    if resp.clicked() || resp.drag_started() {
-        resp.request_focus();
-    }
 
     let min = *range.start();
     let max = *range.end();
@@ -375,7 +376,7 @@ pub fn size_slider(
     let knob = eframe::egui::Rect::from_center_size(pos2(knob_x, track.center().y), vec2(18.0, 18.0));
     painter.circle_filled(knob.center(), 9.0, c.knob);
     painter.circle_stroke(knob.center(), 9.0, Stroke::new(1.0_f32, c.knob_border));
-    if resp.has_focus() {
+    if resp.has_focus() && focus_visible(painter.ctx()) {
         painter.circle_stroke(knob.center(), 11.0, Stroke::new(1.0_f32, c.accent));
     }
 
@@ -448,9 +449,6 @@ pub fn segmented_sized<T: Copy + PartialEq>(
             vec2(seg_w, height - pad * 2.0),
         );
         let resp = ui.interact(cell, Id::new(("seg_cell", id, i)), Sense::click());
-        if resp.clicked() {
-            resp.request_focus();
-        }
         if resp.has_focus() {
             let (left, right) = ui.input(|i| {
                 (
@@ -479,13 +477,7 @@ pub fn segmented_sized<T: Copy + PartialEq>(
             FontId::proportional(font_size),
             color,
         );
-        if resp.has_focus() {
-            painter.rect_stroke(
-                cell.shrink(1.0),
-                Rounding::same(6.0),
-                Stroke::new(2.0_f32, c.accent),
-            );
-        }
+        focus_ring(painter, cell, Rounding::same(6.0), &resp, c);
 
         pointer_cursor(ui, &resp);
         resp.widget_info(|| {
@@ -508,52 +500,135 @@ pub fn segmented_sized<T: Copy + PartialEq>(
     false
 }
 
-/// Language button: flag and language name on the current-language colour.
-pub fn language_button(ui: &mut Ui, c: &Colors, lang: Lang) -> Response {
-    let font = FontId::proportional(13.0);
-    let text_w = ui
-        .painter()
-        .layout_no_wrap(lang.name().to_owned(), font.clone(), c.text)
-        .size()
-        .x;
-    let size = vec2(text_w + 18.0 + 8.0 + 24.0, 36.0);
-    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-    if resp.clicked() {
-        resp.request_focus();
+/// Flag image of a language.
+fn flag(lang: Lang) -> egui::ImageSource<'static> {
+    match lang {
+        Lang::Fr => egui::include_image!("../assets/flags/fr.svg"),
+        Lang::En => egui::include_image!("../assets/flags/en.svg"),
     }
+}
+
+/// Language dropdown: a button showing the current language, and a menu listing
+/// both. The menu is drawn in the topmost layer, so it appears above the settings
+/// popup (egui's own popups would stay hidden behind it). Returns the language
+/// picked this frame, if any.
+pub fn language_menu(ui: &mut Ui, c: &Colors, current: Lang) -> Option<Lang> {
+    let ctx = ui.ctx().clone();
+    let font = FontId::proportional(13.0);
+    // Same width for every language, so the button does not change size when it switches.
+    let text_w = [Lang::En, Lang::Fr]
+        .iter()
+        .map(|l| {
+            ui.painter()
+                .layout_no_wrap(l.name().to_owned(), font.clone(), c.text)
+                .size()
+                .x
+        })
+        .fold(0.0_f32, f32::max);
+    let (rect, resp) = ui.allocate_exact_size(vec2(text_w + 18.0 + 8.0 + 12.0 + 14.0 + 12.0, 36.0), Sense::click());
 
     let fill = if c.dark { c.active } else { c.track };
-    let hover = if c.dark {
-        c.active.lerp_to_gamma(c.text, 0.06)
-    } else {
-        c.track.lerp_to_gamma(c.text, 0.06)
-    };
-    let t = ui
-        .ctx()
-        .animate_bool_with_time(Id::new(("lang_hover", lang.code())), resp.hovered(), 0.12);
-    let painter = ui.painter();
-    painter.rect_filled(rect, Rounding::same(10.0), fill.lerp_to_gamma(hover, t));
+    let hover = fill.lerp_to_gamma(c.text, 0.06);
+    let t = ctx.animate_bool_with_time(Id::new("lang_hover"), resp.hovered(), 0.12);
+    ui.painter()
+        .rect_filled(rect, Rounding::same(10.0), fill.lerp_to_gamma(hover, t));
 
-    let flag_rect = eframe::egui::Rect::from_min_size(
+    let flag_rect = egui::Rect::from_min_size(
         pos2(rect.min.x + 12.0, rect.center().y - 6.0),
         vec2(18.0, 12.0),
     );
-    let flag = match lang {
-        Lang::Fr => egui::include_image!("../assets/flags/fr.svg"),
-        Lang::En => egui::include_image!("../assets/flags/en.svg"),
-    };
-    Image::new(flag).paint_at(ui, flag_rect);
-
-    painter.text(
+    Image::new(flag(current)).paint_at(ui, flag_rect);
+    ui.painter().text(
         pos2(flag_rect.max.x + 8.0, rect.center().y),
         Align2::LEFT_CENTER,
-        lang.name(),
+        current.name(),
         font,
         c.text,
     );
-
+    // Chevron.
+    let cx = rect.max.x - 16.0;
+    let cy = rect.center().y;
+    let stroke = Stroke::new(1.5_f32, c.text_dim);
+    ui.painter().line_segment([pos2(cx - 4.0, cy - 2.0), pos2(cx, cy + 2.0)], stroke);
+    ui.painter().line_segment([pos2(cx, cy + 2.0), pos2(cx + 4.0, cy - 2.0)], stroke);
+    focus_ring(ui.painter(), rect, Rounding::same(10.0), &resp, c);
     pointer_cursor(ui, &resp);
-    resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, ui.is_enabled(), lang.name()));
+
+    let now = ctx.input(|i| i.time);
+    let state_id = Id::new("language_menu_open");
+    let (mut open, seen) = ctx
+        .data(|d| d.get_temp::<(bool, f64)>(state_id))
+        .unwrap_or((false, 0.0));
+    // The popup was closed in the meantime: forget the open menu.
+    if now - seen > 0.5 {
+        open = false;
+    }
+    if resp.clicked() {
+        open = !open;
+    }
+    // Escape closes the menu first, not the popup behind it.
+    if open && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
+        open = false;
+    }
+
+    let mut picked = None;
+    if open {
+        let area = egui::Area::new(Id::new("language_menu_area"))
+            .order(egui::Order::Debug)
+            .pivot(Align2::RIGHT_TOP)
+            .fixed_pos(rect.right_bottom() + vec2(0.0, 4.0))
+            .show(&ctx, |ui| {
+                egui::Frame::none()
+                    .fill(c.surface)
+                    .stroke(Stroke::new(1.0_f32, c.border))
+                    .rounding(Rounding::same(12.0))
+                    .inner_margin(egui::Margin::same(4.0))
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
+                        for lang in [Lang::En, Lang::Fr] {
+                            if language_option(ui, c, lang, lang == current, rect.width() - 8.0).clicked() {
+                                picked = Some(lang);
+                            }
+                        }
+                    });
+            });
+        let menu_rect = area.response.rect;
+        if picked.is_some() {
+            open = false;
+        } else if ctx.input(|i| i.pointer.any_pressed()) {
+            if let Some(p) = ctx.input(|i| i.pointer.interact_pos()) {
+                if !menu_rect.contains(p) && !rect.contains(p) {
+                    open = false;
+                }
+            }
+        }
+    }
+    ctx.data_mut(|d| d.insert_temp(state_id, (open, now)));
+    picked
+}
+
+/// One row of the language menu.
+fn language_option(ui: &mut Ui, c: &Colors, lang: Lang, selected: bool, width: f32) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, 36.0), Sense::click());
+    let hov = ui
+        .ctx()
+        .animate_bool_with_time(Id::new(("lang_option", lang.code())), resp.hovered(), 0.12);
+    let fill = if selected { c.hover } else { c.hover.gamma_multiply(hov) };
+    ui.painter().rect_filled(rect, Rounding::same(8.0), fill);
+
+    let flag_rect = egui::Rect::from_min_size(
+        pos2(rect.min.x + 10.0, rect.center().y - 6.0),
+        vec2(18.0, 12.0),
+    );
+    Image::new(flag(lang)).paint_at(ui, flag_rect);
+    ui.painter().text(
+        pos2(flag_rect.max.x + 8.0, rect.center().y),
+        Align2::LEFT_CENTER,
+        lang.name(),
+        FontId::proportional(13.0),
+        c.text,
+    );
+    pointer_cursor(ui, &resp);
     resp
 }
 
@@ -591,7 +666,7 @@ pub fn setting_row<R>(
             .layout(Layout::left_to_right(Align::Center)),
     );
     label_ui.add(
-        egui::Label::new(egui::RichText::new(label).size(14.0).color(c.text)).truncate(),
+        egui::Label::new(egui::RichText::new(label).size(15.0).color(c.text)).truncate(),
     );
     row.advance_cursor_after_rect(label_rect);
     row.add_space(gap);
