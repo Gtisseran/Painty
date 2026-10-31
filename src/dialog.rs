@@ -8,7 +8,9 @@ use crate::theme::{self, Colors};
 /// Space kept between the popup and the window edges.
 const EDGE_MARGIN: f32 = 16.0;
 /// Inner padding of the popup, on each side.
-const INNER_PADDING: f32 = 20.0;
+const INNER_PADDING: f32 = 24.0;
+/// Corner radius of the popup card.
+const ROUNDING: f32 = 16.0;
 
 /// True while the dialog is on screen, including its fade-out.
 /// Call it after `show` has run for the current frame.
@@ -18,8 +20,10 @@ pub fn is_visible(ctx: &Context, id: &str) -> bool {
 }
 
 /// Animated modal popup with a dimmed background and a slide-in effect.
-/// `width` is the preferred popup width in pixels. It is reduced if the window is
-/// too narrow, and the popup is always kept inside the window.
+/// `width` is the outer width of the card, padding included. It is reduced if
+/// the window is too narrow, and the popup is always kept inside the window.
+/// `fill` is the card colour: `surface_alt` for the settings card, `surface`
+/// for the other popups.
 /// Returns `true` when the user asks to close it (click on the background or Escape).
 pub fn show(
     ctx: &Context,
@@ -27,6 +31,7 @@ pub fn show(
     open: bool,
     c: &Colors,
     width: f32,
+    fill: Color32,
     content: impl FnOnce(&mut Ui),
 ) -> bool {
     // Each opening gets a new session number. egui keeps the size of an area and of a
@@ -63,16 +68,19 @@ pub fn show(
         .fixed_pos(screen.min)
         .show(ctx, |ui| {
             let (rect, resp) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
+            let scrim = c.scrim();
+            let alpha = (scrim.a() as f32 * t) as u8;
             ui.painter()
-                .rect_filled(rect, 0.0, Color32::from_black_alpha((t * 110.0) as u8));
+                .rect_filled(rect, 0.0, Color32::from_black_alpha(alpha));
             if open && resp.clicked() {
                 dismissed = true;
             }
         });
 
-    // Never wider than the window allows, padding included.
-    let max_w = (screen.width() - 2.0 * EDGE_MARGIN - 2.0 * INNER_PADDING).max(120.0);
+    // Never wider than the window allows.
+    let max_w = (screen.width() - 2.0 * EDGE_MARGIN).max(120.0);
     let width = width.min(max_w);
+    let content_w = (width - 2.0 * INNER_PADDING).max(72.0);
     // The popup must fit between the two margins, padding included.
     let max_h = (screen.height() - 2.0 * EDGE_MARGIN).max(120.0);
     let max_content_h = (max_h - 2.0 * INNER_PADDING).max(40.0);
@@ -86,17 +94,17 @@ pub fn show(
         .anchor(Align2::CENTER_CENTER, vec2(0.0, (1.0 - t) * 14.0))
         // Measure the content against the full height available, not a default size:
         // the popup then shrinks to its content or scrolls when it is too tall.
-        .default_size(vec2(width + 2.0 * INNER_PADDING, max_h))
+        .default_size(vec2(width, max_h))
         .show(ctx, |ui| {
             theme::apply(ui, c);
             Frame::none()
-                .fill(c.surface)
+                .fill(fill)
                 .stroke(Stroke::new(1.0_f32, c.border))
-                .rounding(Rounding::same(18.0))
+                .rounding(Rounding::same(ROUNDING))
                 .inner_margin(Margin::same(INNER_PADDING))
                 .show(ui, |ui| {
                     // The popup is exactly as wide as its content, which never exceeds the window.
-                    ui.set_width(width);
+                    ui.set_width(content_w);
                     // Scrolls only when the window is too short for the content.
                     ScrollArea::vertical()
                         .id_salt(("dialog_scroll", id, size_key, session))

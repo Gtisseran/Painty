@@ -10,14 +10,12 @@ use eframe::egui::{
     Rounding, Sense, Stroke, Ui, UiBuilder, WidgetInfo, WidgetType,
 };
 
-use crate::i18n::Lang;
+use crate::i18n::{t, Lang};
 use crate::theme::{self, Colors};
 
 /// Visual style of a text button.
 #[derive(Clone, Copy)]
 pub enum Kind {
-    /// Transparent until hovered.
-    Ghost,
     /// Filled with the row colour: the secondary action of a popup.
     Soft,
     /// Inverted foreground/background: the main action of a popup.
@@ -42,10 +40,22 @@ fn pointer_cursor(ui: &Ui, resp: &Response) {
     }
 }
 
+/// Popup title: 18 px semibold on a fixed 22 px line, so the card height stays stable.
+pub fn title(ui: &mut Ui, c: &Colors, text: &str) {
+    let width = ui.available_width();
+    let (rect, _) = ui.allocate_exact_size(vec2(width, 22.0), Sense::hover());
+    ui.painter().text(
+        rect.left_center(),
+        Align2::LEFT_CENTER,
+        text,
+        theme::semibold(18.0),
+        c.text,
+    );
+}
+
 /// Text button used in popups. Primary actions use the inverted colour pair.
 pub fn button(ui: &mut Ui, id: &str, c: &Colors, label: &str, kind: Kind, min_w: f32) -> Response {
     let (base, hover, fg) = match kind {
-        Kind::Ghost => (Color32::TRANSPARENT, c.hover, c.text),
         Kind::Soft => (c.row, c.hover, c.text),
         Kind::Primary => (c.primary_bg, c.primary_bg.lerp_to_gamma(c.text_dim, 0.18), c.primary_fg),
         Kind::Danger => (c.danger, c.danger_hover, Color32::WHITE),
@@ -80,11 +90,18 @@ pub fn button(ui: &mut Ui, id: &str, c: &Colors, label: &str, kind: Kind, min_w:
     }
 
     let painter = ui.painter();
-    painter.rect_filled(rect, Rounding::same(10.0), fill);
-    painter.text(rect.center(), Align2::CENTER_CENTER, label, font, fg);
+    let enabled = ui.is_enabled();
+    let dim = if enabled { 1.0 } else { 0.45 };
+    painter.rect_filled(rect, Rounding::same(10.0), fill.gamma_multiply(dim));
+    painter.text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        label,
+        font,
+        fg.gamma_multiply(dim),
+    );
 
     pointer_cursor(ui, &resp);
-    let enabled = ui.is_enabled();
     resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
     resp
 }
@@ -198,7 +215,7 @@ pub fn color_button(
         pointer_cursor(ui, &resp);
     }
 
-    resp.widget_info(|| WidgetInfo::labeled(WidgetType::ColorButton, enabled, "Couleur"));
+    resp.widget_info(|| WidgetInfo::labeled(WidgetType::ColorButton, enabled, t("toolbar.color")));
     resp
 }
 
@@ -238,7 +255,12 @@ pub fn palette_swatch(
 
     pointer_cursor(ui, &resp);
     resp.widget_info(|| {
-        WidgetInfo::selected(WidgetType::Button, ui.is_enabled(), selected, "Couleur")
+        WidgetInfo::selected(
+            WidgetType::Button,
+            ui.is_enabled(),
+            selected,
+            t("toolbar.color"),
+        )
     });
     resp
 }
@@ -343,7 +365,7 @@ pub fn segmented_sized<T: Copy + PartialEq>(
     height: f32,
     font_size: f32,
 ) -> bool {
-    let pad = if height >= 38.0 { 4.0 } else { 3.0 };
+    let pad = if height >= 36.0 { 4.0 } else { 3.0 };
     let size = vec2(seg_w * options.len() as f32 + pad * 2.0, height);
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
 
@@ -447,7 +469,7 @@ pub fn language_button(ui: &mut Ui, c: &Colors, lang: Lang) -> Response {
         .layout_no_wrap(lang.name().to_owned(), font.clone(), c.text)
         .size()
         .x;
-    let size = vec2(text_w + 18.0 + 8.0 + 24.0, 34.0);
+    let size = vec2(text_w + 18.0 + 8.0 + 24.0, 36.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     if resp.clicked() {
         resp.request_focus();
@@ -489,28 +511,48 @@ pub fn language_button(ui: &mut Ui, c: &Colors, lang: Lang) -> Response {
 }
 
 /// A settings row: label on the left, control on the right, on a rounded row.
+/// `control_w` is reserved on the right so a long label never overlaps the control.
 pub fn setting_row<R>(
     ui: &mut Ui,
     c: &Colors,
     label: &str,
+    control_w: f32,
     control: impl FnOnce(&mut Ui) -> R,
 ) -> R {
     let width = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(vec2(width, 54.0), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(width, 64.0), Sense::hover());
     ui.painter()
         .rect_filled(rect, Rounding::same(12.0), c.row);
 
-    let inner = rect.shrink2(vec2(16.0, 10.0));
+    let inner = rect.shrink2(vec2(16.0, 14.0));
     let mut row = ui.new_child(
         UiBuilder::new()
             .max_rect(inner)
             .layout(Layout::left_to_right(Align::Center)),
     );
     row.spacing_mut().item_spacing.x = 0.0;
-    row.add(egui::Label::new(
-        egui::RichText::new(label).size(15.0).color(c.text),
-    ).truncate());
 
-    row.with_layout(Layout::right_to_left(Align::Center), |ui| control(ui))
-        .inner
+    let gap = 4.0;
+    let label_w = (inner.width() - control_w - gap).max(1.0);
+    let label_rect = egui::Rect::from_min_size(
+        row.cursor().min,
+        vec2(label_w, inner.height()),
+    );
+    let mut label_ui = row.new_child(
+        UiBuilder::new()
+            .max_rect(label_rect)
+            .layout(Layout::left_to_right(Align::Center)),
+    );
+    label_ui.add(
+        egui::Label::new(egui::RichText::new(label).size(14.0).color(c.text)).truncate(),
+    );
+    row.advance_cursor_after_rect(label_rect);
+    row.add_space(gap);
+
+    row.allocate_ui_with_layout(
+        vec2(control_w, inner.height()),
+        Layout::right_to_left(Align::Center),
+        |ui| control(ui),
+    )
+    .inner
 }

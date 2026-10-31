@@ -1,4 +1,5 @@
 use eframe::egui::{self, Color32, Frame, Key, RichText};
+use std::time::{Duration, Instant};
 
 use crate::canvas::Canvas;
 use crate::config::{self, Config};
@@ -7,7 +8,7 @@ use crate::export::{self, Format};
 use crate::i18n::{self, t, tf, Lang};
 use crate::model::Brush;
 use crate::settings;
-use crate::theme::{CanvasColor, Mode};
+use crate::theme::{self, CanvasColor, Mode};
 use crate::toolbar::{self, Action};
 use crate::updater::{self, Status, Updater};
 use crate::widgets::{self, Kind};
@@ -44,7 +45,12 @@ pub struct Painty {
     canvas: Canvas,
     brush: Brush,
     mode: Mode,
-    canvas_follows_theme: bool,
+    /// Background of the drawing area, independent from the interface theme.
+    canvas_color: CanvasColor,
+    /// True when the theme was chosen in the settings; false follows the system.
+    theme_override: bool,
+    /// Last time the system theme was read, while following it.
+    last_system_check: Instant,
     language: Lang,
     /// Ink color used on the previous frame, to detect a background change.
     last_ink: Option<Color32>,
@@ -73,12 +79,8 @@ impl Painty {
 
         let cfg = config::load();
         i18n::set_lang(cfg.language);
-        let canvas = if cfg.canvas_follows_theme {
-            cfg.mode.canvas()
-        } else {
-            CanvasColor::Light
-        };
-        let ink = cfg.mode.colors(canvas).ink;
+        let mode = cfg.theme.unwrap_or_else(theme::system_mode);
+        let ink = mode.colors(cfg.canvas).ink;
 
         let mut brush = Brush::default();
         brush.color = ink;
@@ -86,8 +88,10 @@ impl Painty {
         Self {
             canvas: Canvas::default(),
             brush,
-            mode: cfg.mode,
-            canvas_follows_theme: cfg.canvas_follows_theme,
+            mode,
+            canvas_color: cfg.canvas,
+            theme_override: cfg.theme.is_some(),
+            last_system_check: Instant::now(),
             language: cfg.language,
             last_ink: Some(ink),
             last_saved: cfg,
@@ -198,11 +202,17 @@ impl eframe::App for Painty {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
 
-        let canvas = if self.canvas_follows_theme {
-            self.mode.canvas()
-        } else {
-            CanvasColor::Light
-        };
+        // Follow the Windows theme while no explicit choice was saved. The
+        // periodic repaint also notices a theme change made outside the app.
+        if !self.theme_override {
+            ctx.request_repaint_after(Duration::from_secs(2));
+            if self.last_system_check.elapsed() >= Duration::from_secs(2) {
+                self.last_system_check = Instant::now();
+                self.mode = theme::system_mode();
+            }
+        }
+
+        let canvas = self.canvas_color;
         let c = self.mode.colors(canvas);
 
         // When the canvas background changes, the default ink follows (black <-> white).
@@ -267,23 +277,32 @@ impl eframe::App for Painty {
 
         // Settings dialog. It keeps its own open flag, synced with `Modal`.
         let mut settings_open = self.modal == Modal::Settings;
+        let previous_mode = self.mode;
         settings::show(
             ctx,
             &mut settings_open,
             &mut self.mode,
-            &mut self.canvas_follows_theme,
+            &mut self.canvas_color,
             &mut self.language,
             &mut self.updater,
             &c,
         );
+        // Picking a theme stops following the system, and is saved.
+        if self.mode != previous_mode {
+            self.theme_override = true;
+        }
         if !settings_open && self.modal == Modal::Settings {
             self.modal = Modal::None;
         }
 
         // Persist settings as soon as they change.
         let current = Config {
-            mode: self.mode,
-            canvas_follows_theme: self.canvas_follows_theme,
+            theme: if self.theme_override {
+                Some(self.mode)
+            } else {
+                None
+            },
+            canvas: self.canvas_color,
             language: self.language,
         };
         if current != self.last_saved {
@@ -295,16 +314,16 @@ impl eframe::App for Painty {
         let mut confirm = false;
         let mut cancel = false;
         let clear_open = self.modal == Modal::ClearConfirm;
-        let dismissed_clear = dialog::show(ctx, "confirm_clear", clear_open, &c, 300.0, |ui| {
+        let dismissed_clear = dialog::show(ctx, "confirm_clear", clear_open, &c, 340.0, c.surface, |ui| {
             ui.label(RichText::new(t("dialog.clear.title")).size(18.0).strong());
             ui.add_space(6.0);
             ui.label(RichText::new(t("dialog.clear.body")).color(c.text_dim));
             ui.add_space(16.0);
             ui.horizontal(|ui| {
-                if widgets::button(ui, "keep", &c, t("button.keep"), Kind::Soft, 146.0).clicked() {
+                if widgets::button(ui, "keep", &c, t("button.keep"), Kind::Soft, 140.0).clicked() {
                     cancel = true;
                 }
-                if widgets::button(ui, "wipe", &c, t("button.clear_all"), Kind::Danger, 146.0)
+                if widgets::button(ui, "wipe", &c, t("button.clear_all"), Kind::Danger, 140.0)
                     .clicked()
                 {
                     confirm = true;
@@ -325,7 +344,7 @@ impl eframe::App for Painty {
         let mut export_go = false;
         let mut export_cancel = false;
         let export_open = self.modal == Modal::Export;
-        let dismissed_export = dialog::show(ctx, "export_form", export_open, &c, 300.0, |ui| {
+        let dismissed_export = dialog::show(ctx, "export_form", export_open, &c, 380.0, c.surface, |ui| {
             let form = &mut self.export_form;
             ui.label(RichText::new(t("dialog.export.title")).size(18.0).strong());
             ui.add_space(12.0);
@@ -376,12 +395,12 @@ impl eframe::App for Painty {
         let error = self.error_text.clone();
         let mut error_close = false;
         let error_open = self.modal == Modal::Error;
-        let dismissed_error = dialog::show(ctx, "export_error", error_open, &c, 300.0, |ui| {
+        let dismissed_error = dialog::show(ctx, "export_error", error_open, &c, 360.0, c.surface, |ui| {
             ui.label(RichText::new(t("dialog.export_error.title")).size(18.0).strong());
             ui.add_space(6.0);
             ui.label(RichText::new(error.as_str()).color(c.text_dim));
             ui.add_space(16.0);
-            if widgets::button(ui, "export_error_close", &c, t("button.close"), Kind::Soft, 300.0)
+            if widgets::button(ui, "export_error_close", &c, t("button.close"), Kind::Soft, 312.0)
                 .clicked()
             {
                 error_close = true;
@@ -403,7 +422,7 @@ impl eframe::App for Painty {
         let show_update = update_prompt && !other_dialog_visible;
         let mut install = false;
         let mut later = false;
-        let dismissed_update = dialog::show(ctx, "update", show_update, &c, 300.0, |ui| {
+        let dismissed_update = dialog::show(ctx, "update", show_update, &c, 380.0, c.surface, |ui| {
             match &status {
                 Status::Available(release) => {
                     ui.label(RichText::new(t("update.title")).size(18.0).strong());
@@ -457,7 +476,7 @@ impl eframe::App for Painty {
                     ui.add_space(6.0);
                     ui.label(RichText::new(error.as_str()).color(c.text_dim));
                     ui.add_space(16.0);
-                    if widgets::button(ui, "update_close", &c, t("button.close"), Kind::Soft, 300.0)
+                    if widgets::button(ui, "update_close", &c, t("button.close"), Kind::Soft, 332.0)
                         .clicked()
                     {
                         later = true;
@@ -481,18 +500,18 @@ impl eframe::App for Painty {
         let mut quit = false;
         let mut keep = false;
         let quit_open = self.modal == Modal::Quit;
-        let dismissed_quit = dialog::show(ctx, "confirm_exit", quit_open, &c, 300.0, |ui| {
+        let dismissed_quit = dialog::show(ctx, "confirm_exit", quit_open, &c, 340.0, c.surface, |ui| {
             ui.label(RichText::new(t("dialog.quit.title")).size(18.0).strong());
             ui.add_space(6.0);
             ui.label(RichText::new(t("dialog.quit.body")).color(c.text_dim));
             ui.add_space(16.0);
             ui.horizontal(|ui| {
-                if widgets::button(ui, "quit_cancel", &c, t("button.keep_drawing"), Kind::Soft, 146.0)
+                if widgets::button(ui, "quit_cancel", &c, t("button.keep_drawing"), Kind::Soft, 140.0)
                     .clicked()
                 {
                     keep = true;
                 }
-                if widgets::button(ui, "quit_confirm", &c, t("button.quit"), Kind::Danger, 146.0)
+                if widgets::button(ui, "quit_confirm", &c, t("button.quit"), Kind::Danger, 140.0)
                     .clicked()
                 {
                     quit = true;
