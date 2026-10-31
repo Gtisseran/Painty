@@ -11,6 +11,8 @@
   "canvas.follow": "Follow theme",
   "tool.brush": "Brush",
   "tool.eraser": "Eraser",
+  "toolbar.color": "Color",
+  "toolbar.size": "Brush size",
   "action.undo": "Undo",
   "action.clear": "Clear",
   "action.export": "Export (Ctrl+S)",

@@ -63,7 +63,7 @@ pub fn show(
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0 * SEG_PADDING;
             for lang in [Lang::Fr, Lang::En] {
-                if widgets::language_button(ui, c, lang, *language == lang, seg_w).clicked() {
+                if widgets::language_button(ui, c, lang).clicked() {
                     *language = lang;
                     // Applies from the next frame, so every text switches at once.
                     i18n::set_lang(lang);

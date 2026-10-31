@@ -11,6 +11,8 @@
   "canvas.follow": "Suit le thème",
   "tool.brush": "Pinceau",
   "tool.eraser": "Gomme",
+  "toolbar.color": "Couleur",
+  "toolbar.size": "Taille du pinceau",
   "action.undo": "Annuler",
   "action.clear": "Effacer",
   "action.export": "Exporter (Ctrl+S)",
