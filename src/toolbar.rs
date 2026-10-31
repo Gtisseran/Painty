@@ -72,7 +72,6 @@ fn main_width(g: f32, labels: f32, undo_w: f32, clear_w: f32, slider: f32) -> f3
 /// this frame, if any.
 pub fn show(ctx: &Context, brush: &mut Brush, c: &Colors) -> Option<Action> {
     let screen_w = ctx.screen_rect().width();
-    let eraser = brush.tool == Tool::Eraser;
     // Gap between elements: 4 px at the minimum window width, 10 px from 700 px.
     let g = 4.0 + 6.0 * ((screen_w - 480.0) / 220.0).clamp(0.0, 1.0);
     let avail = (screen_w - 2.0 * EDGE - 2.0 * PAD_X - 2.0).max(0.0);
